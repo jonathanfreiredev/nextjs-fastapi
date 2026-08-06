@@ -7,7 +7,6 @@ from ..db.models import BaseModel
 class User(BaseModel):
     __tablename__ = "users"
 
-    username: Mapped[str]
     email: Mapped[str | None] = mapped_column(default=None)
     full_name: Mapped[str | None] = mapped_column(default=None)
     disabled: Mapped[bool | None] = mapped_column(default=None)

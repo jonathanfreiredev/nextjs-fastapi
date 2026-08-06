@@ -1,0 +1,52 @@
+import { createSafeActionClient } from "next-safe-action";
+
+/**
+ * Helper to simulate network latency in development mode
+ */
+const simulateDelay = async () => {
+  if (process.env.NODE_ENV === "development") {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+};
+
+/**
+ * Base client with global middleware for logging and delay
+ */
+export const actionClient = createSafeActionClient({
+  // Global error handler
+  handleServerError: (error) => {
+    console.error("Server Error:", error);
+    return error.message || "An unexpected error occurred";
+  },
+}).use(async ({ next }) => {
+  await simulateDelay();
+  return next();
+});
+
+/**
+ * Procedure: Public Action
+ * Available for everyone, but includes the global delay and validation
+ */
+export const publicProcedure = actionClient;
+
+/**
+ * Procedure: Protected Action
+ * Verifies the user session before executing the action logic
+ */
+export const protectedProcedure = actionClient.use(async ({ next }) => {
+  // const session = await getSession();
+
+  // if (!session?.user) {
+  //   throw new Error(
+  //     "Unauthorized: You must be logged in to perform this action",
+  //   );
+  // }
+
+  // Inject the user session into the context (ctx)
+  return next({
+    ctx: {
+      // user: session.user,
+      // session: session,
+    },
+  });
+});

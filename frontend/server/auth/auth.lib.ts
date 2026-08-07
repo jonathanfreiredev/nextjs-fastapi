@@ -2,6 +2,17 @@
 import { cookies } from "next/headers";
 import { jwtDecode } from "jwt-decode";
 
+export type Session = {
+  session: {
+    token: string;
+    expiresAt: string;
+  };
+  user: {
+    email: string;
+    name: string;
+  };
+};
+
 export async function getSession() {
   const cookieStore = await cookies();
   const access_token = cookieStore.get("access_token");

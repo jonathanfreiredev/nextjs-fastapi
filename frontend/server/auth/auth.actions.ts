@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { env } from "@/lib/env";
 import { returnServerError } from "next-safe-action";
 import { loginFormSchema, signupFormSchema } from "./auth.schemas";
+import { logout } from "./auth.service";
 
 const signupActionSchema = signupFormSchema.omit({ confirmPassword: true });
 
@@ -16,7 +17,11 @@ export const signupAction = publicProcedure
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(parsedInput),
+      body: JSON.stringify({
+        full_name: parsedInput.name,
+        email: parsedInput.email,
+        password: parsedInput.password,
+      }),
     });
 
     if (!response.ok) {
@@ -75,3 +80,7 @@ export const loginAction = publicProcedure
 
     return { success: true };
   });
+
+export const logoutAction = publicProcedure.action(async () => {
+  return logout();
+});

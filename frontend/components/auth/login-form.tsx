@@ -59,6 +59,7 @@ export const LoginForm = ({
     });
 
     form.reset();
+    router.refresh();
     router.replace("/");
   }
 

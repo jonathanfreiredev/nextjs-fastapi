@@ -5,17 +5,15 @@ import { useState } from "react";
 import { Item, ItemContent, ItemMedia, ItemTitle } from "../ui/item";
 import Link from "next/link";
 import { SheetClose } from "../ui/sheet";
+import { logoutAction } from "@/server/auth/auth.actions";
 
-export function SidebarSheetAuth() {
+interface SidebarSheetAuthProps {
+  isLoggedIn: boolean;
+}
+
+export function SidebarSheetAuth({ isLoggedIn }: SidebarSheetAuthProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
-  // const { data, isPending } = authClient.useSession();
-
-  // if (isPending) return null;
-
-  // const isLoggedIn = !!data?.session;
-
-  const isLoggedIn = true;
 
   return (
     <>
@@ -50,7 +48,7 @@ export function SidebarSheetAuth() {
                 if (isSubmitting) return;
 
                 setIsSubmitting(true);
-                // await authClient.signOut();
+                await logoutAction();
                 router.refresh();
                 setIsSubmitting(false);
               }}

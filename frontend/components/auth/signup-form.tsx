@@ -72,7 +72,7 @@ export function SignupForm({
     });
 
     form.reset();
-
+    router.refresh();
     router.replace("/");
   }
 

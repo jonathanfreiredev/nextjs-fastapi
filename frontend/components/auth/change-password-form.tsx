@@ -14,36 +14,29 @@ import {
   FieldSet,
 } from "../ui/field";
 import { Input } from "../ui/input";
-
-const formSchema = z.object({
-  currentPassword: z
-    .string()
-    .min(8, { message: "Current password must be at least 8 characters" }),
-  newPassword: z
-    .string()
-    .min(8, { message: "Password must be at least 8 characters" }),
-  confirmPassword: z
-    .string()
-    .min(8, { message: "Confirm Password must be at least 8 characters" }),
-});
+import { updateUserPasswordSchema } from "@/server/users/users.schemas";
+import { updateUserPasswordAction } from "@/server/users/users.actions";
+import { useRouter } from "next/navigation";
 
 export const ChangePasswordForm = ({
   className,
   ...props
 }: React.ComponentProps<"div">) => {
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
+  const router = useRouter();
+
+  const form = useForm<z.infer<typeof updateUserPasswordSchema>>({
+    resolver: zodResolver(updateUserPasswordSchema),
     defaultValues: {
       currentPassword: "",
       newPassword: "",
-      confirmPassword: "",
+      confirmNewPassword: "",
     },
   });
 
-  async function onSubmit(data: z.infer<typeof formSchema>) {
-    const { confirmPassword, ...resetData } = data;
+  async function onSubmit(data: z.infer<typeof updateUserPasswordSchema>) {
+    const { confirmNewPassword, ...resetData } = data;
 
-    if (data.newPassword !== data.confirmPassword) {
+    if (data.newPassword !== data.confirmNewPassword) {
       toast.add({
         title: "Passwords do not match!",
         description: "Please make sure your passwords match.",
@@ -52,25 +45,27 @@ export const ChangePasswordForm = ({
       return;
     }
 
-    // await authClient.changePassword({
-    //   ...resetData,
-    //   revokeOtherSessions: true,
-    //   fetchOptions: {
-    //     async onSuccess() {
-    //       form.reset();
-    //       toast.success("Password changed successfully!", {
-    //         position: "bottom-right",
-    //       });
-    //       window.location.reload();
-    //     },
-    //     onError(error) {
-    //       toast.error("Failed to change password!", {
-    //         description: error.error.message,
-    //         position: "bottom-right",
-    //       });
-    //     },
-    //   },
-    // });
+    const res = await updateUserPasswordAction(resetData);
+
+    if (res.serverError) {
+      toast.add({
+        title: "Password change failed!",
+        description:
+          res.serverError.message ||
+          "An error occurred while changing password.",
+        type: "error",
+      });
+      return;
+    }
+
+    toast.add({
+      title: "Password changed successfully!",
+      description: "Your password has been updated.",
+      type: "success",
+    });
+
+    form.reset();
+    router.refresh();
   }
 
   return (
@@ -132,16 +127,16 @@ export const ChangePasswordForm = ({
                   )}
                 />
                 <Controller
-                  name="confirmPassword"
+                  name="confirmNewPassword"
                   control={form.control}
                   render={({ field, fieldState }) => (
                     <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="confirmPassword">
+                      <FieldLabel htmlFor="confirmNewPassword">
                         Confirm Password
                       </FieldLabel>
                       <Input
                         {...field}
-                        id="confirmPassword"
+                        id="confirmNewPassword"
                         type="password"
                         placeholder="••••••••"
                         autoComplete="off"

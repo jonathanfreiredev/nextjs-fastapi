@@ -15,6 +15,14 @@ class CreateUserDto(BaseModel):
     full_name: str | None = None
     password: str
 
+class UpdateUserDto(BaseModel):
+    email: str | None = None
+    full_name: str | None = None
+
+class UpdateUserPasswordDto(BaseModel):
+    old_password: str
+    new_password: str
+
 class LoginUserDto(BaseModel):
     email: str
     password: str

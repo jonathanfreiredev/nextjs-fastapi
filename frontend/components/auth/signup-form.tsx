@@ -59,7 +59,8 @@ export function SignupForm({
     if (res.serverError) {
       toast.add({
         title: "Signup failed!",
-        description: res.serverError || "An error occurred during signup.",
+        description:
+          res.serverError.message || "An error occurred during signup.",
         type: "error",
       });
       return;

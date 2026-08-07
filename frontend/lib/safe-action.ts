@@ -16,10 +16,10 @@ const simulateDelay = async () => {
  */
 export const actionClient = createSafeActionClient({
   // Global error handler
-  handleServerError: (error) => {
-    console.error("Server Error:", error);
-    return error.message || "An unexpected error occurred";
-  },
+  handleServerError: (error) => ({
+    code: 500,
+    message: error.message || "An unexpected server error occurred.",
+  }),
 }).use(async ({ next }) => {
   await simulateDelay();
   return next();
@@ -48,7 +48,7 @@ export const protectedProcedure = actionClient.use(async ({ next }) => {
   return next({
     ctx: {
       user: session.user,
-      session: session,
+      session: session.session,
     },
   });
 });

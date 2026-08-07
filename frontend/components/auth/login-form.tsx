@@ -46,7 +46,8 @@ export const LoginForm = ({
     if (res.serverError) {
       toast.add({
         title: "Login failed!",
-        description: res.serverError || "An error occurred during login.",
+        description:
+          res.serverError.message || "An error occurred during login.",
         type: "error",
       });
       return;

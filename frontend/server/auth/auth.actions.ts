@@ -7,10 +7,8 @@ import { returnServerError } from "next-safe-action";
 import { loginFormSchema, signupFormSchema } from "./auth.schemas";
 import { logout } from "./auth.service";
 
-const signupActionSchema = signupFormSchema.omit({ confirmPassword: true });
-
 export const signupAction = publicProcedure
-  .inputSchema(signupActionSchema)
+  .inputSchema(signupFormSchema.omit({ confirmPassword: true }))
   .action(async ({ parsedInput }) => {
     const response = await fetch(`${env.BACKEND_URL}/auth/signup`, {
       method: "POST",
@@ -28,7 +26,7 @@ export const signupAction = publicProcedure
       const errorData = await response.json();
       returnServerError({
         code: response.status,
-        message: errorData.error || "An error occurred during signup.",
+        message: errorData.detail || "An error occurred during signup.",
       });
     }
 
@@ -62,7 +60,7 @@ export const loginAction = publicProcedure
       const errorData = await response.json();
       returnServerError({
         code: response.status,
-        message: errorData.error || "An error occurred during login.",
+        message: errorData.detail || "An error occurred during login.",
       });
     }
 
@@ -82,5 +80,5 @@ export const loginAction = publicProcedure
   });
 
 export const logoutAction = publicProcedure.action(async () => {
-  return logout();
+  return await logout();
 });

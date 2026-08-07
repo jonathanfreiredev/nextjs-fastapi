@@ -25,6 +25,13 @@ async def login(
 ) -> Token:
     return await auth_service.login(db, data)
 
+@auth_router.post("/update-token")
+async def update_token(
+    current_user: Annotated[UserDto, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_async_db_session)],
+) -> Token:
+    return await auth_service.update_token(db, email=current_user.email)
+
 @auth_router.post("/logout-all")
 async def logout_all_sessions(
     current_user: Annotated[UserDto, Depends(get_current_active_user)],

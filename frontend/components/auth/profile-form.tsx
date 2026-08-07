@@ -1,9 +1,12 @@
 "use client";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Controller, useForm } from "react-hook-form";
 import { toast } from "@/components/ui/toast";
-import { z } from "zod";
 import { cn } from "@/lib/utils";
+import { updateUserAction } from "@/server/users/users.actions";
+import { updateUserSchema } from "@/server/users/users.schemas";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useRouter } from "next/navigation";
+import { Controller, useForm } from "react-hook-form";
+import { z } from "zod";
 import { Button } from "../ui/button";
 import {
   Card,
@@ -32,55 +35,43 @@ import {
 import { Input } from "../ui/input";
 import { ChangePasswordForm } from "./change-password-form";
 
-const formSchema = z.object({
-  name: z.string().min(2, { message: "Name must be at least 2 characters" }),
-  email: z.email({ message: "Please enter a valid email address" }),
-});
-
 export const ProfileForm = ({
   user,
   className,
   ...props
 }: React.ComponentProps<"div"> & { user: { name: string; email: string } }) => {
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
+  const router = useRouter();
+
+  const form = useForm<z.infer<typeof updateUserSchema>>({
+    resolver: zodResolver(updateUserSchema),
     defaultValues: {
       name: user.name,
       email: user.email,
     },
   });
 
-  async function onSubmit(data: z.infer<typeof formSchema>) {
-    // await authClient.updateUser({
-    //   name: data.name,
-    //   fetchOptions: {
-    //     async onSuccess() {
-    //       await authClient.changeEmail({
-    //         newEmail: data.email,
-    //         fetchOptions: {
-    //           onError(error) {
-    //             if (error.error.message !== "Email is the same") {
-    //               toast.error("Failed to update email!", {
-    //                 description: error.error.message,
-    //                 position: "bottom-right",
-    //               });
-    //             }
-    //           },
-    //         },
-    //       });
-    //       toast.success("Profile updated successfully!", {
-    //         description: "Your profile information has been updated.",
-    //         position: "bottom-right",
-    //       });
-    //     },
-    //     onError(error) {
-    //       toast.error("Failed to update profile!", {
-    //         description: error.error.message,
-    //         position: "bottom-right",
-    //       });
-    //     },
-    //   },
-    // });
+  async function onSubmit(data: z.infer<typeof updateUserSchema>) {
+    const res = await updateUserAction(data);
+
+    if (res.serverError) {
+      toast.add({
+        title: "Profile update failed!",
+        description:
+          res.serverError.message ||
+          "An error occurred while updating profile.",
+        type: "error",
+      });
+      return;
+    }
+
+    toast.add({
+      title: "Profile updated successfully!",
+      description: "Your profile information has been updated.",
+      type: "success",
+    });
+
+    form.reset(data);
+    router.refresh();
   }
 
   return (

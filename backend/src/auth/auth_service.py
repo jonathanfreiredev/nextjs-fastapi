@@ -5,6 +5,7 @@ import jwt
 from pwdlib import PasswordHash
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..users.users_models import User
 from ..users.users_schemas import CreateUserDto, LoginUserDto
 from ..users import users_service
 from .auth_constants import ACCESS_TOKEN_EXPIRE_MINUTES, SECRET_KEY, ALGORITHM
@@ -37,19 +38,19 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
 async def signup(db: AsyncSession, data: CreateUserDto):
     user = await users_service.create_user(db, data)
 
-    return await get_token(email=user.email)
+    return await get_token(user)
 
 async def login(db: AsyncSession, data: LoginUserDto):
-    is_authenticated = await authenticate_user(db, email=data.email, password=data.password)
+    user = await authenticate_user(db, data)
     
-    if not is_authenticated:
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return await get_token(email=data.email)
+    return await get_token(user)
 
 async def authenticate_user(db: AsyncSession, data: LoginUserDto):
     user = await users_service.get_user(db, email=data.email)
@@ -59,12 +60,16 @@ async def authenticate_user(db: AsyncSession, data: LoginUserDto):
         return False
     if not verify_password(password, user.hashed_password):
         return False
-    return True
+    return user
 
-async def get_token(email: str):    
+async def get_token(user: User):    
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": email}, expires_delta=access_token_expires
+        data={
+            "sub": user.email,
+            "name": user.full_name
+        }, 
+        expires_delta=access_token_expires
     )
     return Token(access_token=access_token, token_type="bearer")
 

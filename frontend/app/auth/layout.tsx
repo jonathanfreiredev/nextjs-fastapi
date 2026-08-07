@@ -1,3 +1,4 @@
+import { getSession } from "@/server/auth/auth.lib";
 import { redirect } from "next/navigation";
 
 export default async function Layout({
@@ -5,13 +6,9 @@ export default async function Layout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // const session = await getSession();
+  const resIsLoggedIn = await getSession();
 
-  // const isLoggedIn = !!session?.session;
-
-  const isLoggedIn = false;
-
-  if (isLoggedIn) {
+  if (!!resIsLoggedIn) {
     redirect("/");
   }
 

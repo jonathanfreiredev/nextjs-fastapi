@@ -23,13 +23,8 @@ import {
   FieldSet,
 } from "../ui/field";
 import { Input } from "../ui/input";
-
-const formSchema = z.object({
-  email: z.email({ message: "Please enter a valid email address" }),
-  password: z
-    .string()
-    .min(8, { message: "Password must be at least 8 characters long" }),
-});
+import { loginFormSchema } from "@/server/auth/auth.schemas";
+import { loginAction } from "@/server/auth/auth.actions";
 
 export const LoginForm = ({
   className,
@@ -37,36 +32,34 @@ export const LoginForm = ({
 }: React.ComponentProps<"div">) => {
   const router = useRouter();
 
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
+  const form = useForm<z.infer<typeof loginFormSchema>>({
+    resolver: zodResolver(loginFormSchema),
     defaultValues: {
       email: "",
       password: "",
     },
   });
 
-  async function onSubmit(data: z.infer<typeof formSchema>) {
-    // await authClient.signIn.email({
-    //   ...data,
-    //   rememberMe: true,
-    //   fetchOptions: {
-    //     onSuccess() {
-    //       toast.success("Logged in successfully!", {
-    //         description: "Welcome back!",
-    //         position: "bottom-right",
-    //       });
-    //       form.reset();
-    //       router.replace("/");
-    //       router.refresh();
-    //     },
-    //     onError(error) {
-    //       toast.error("Failed to log in!", {
-    //         description: error.error.message,
-    //         position: "bottom-right",
-    //       });
-    //     },
-    //   },
-    // });
+  async function onSubmit(data: z.infer<typeof loginFormSchema>) {
+    const res = await loginAction(data);
+
+    if (res.serverError) {
+      toast.add({
+        title: "Login failed!",
+        description: res.serverError || "An error occurred during login.",
+        type: "error",
+      });
+      return;
+    }
+
+    toast.add({
+      title: "Logged in successfully!",
+      description: "Welcome back!",
+      type: "success",
+    });
+
+    form.reset();
+    router.replace("/");
   }
 
   return (

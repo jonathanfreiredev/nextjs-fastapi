@@ -24,6 +24,7 @@ import {
 import { Input } from "../ui/input";
 import Link from "next/link";
 import { signupFormSchema } from "@/server/auth/auth.schemas";
+import { signupAction } from "@/server/auth/auth.actions";
 
 export function SignupForm({
   className,
@@ -53,27 +54,26 @@ export function SignupForm({
       return;
     }
 
-    // await authClient.signUp.email({
-    //   ...signupData,
-    //   fetchOptions: {
-    //     onSuccess() {
-    //       toast.success("Account created successfully!", {
-    //         description: "Welcome!",
-    //         position: "bottom-right",
-    //       });
-    //       form.reset();
+    const res = await signupAction(signupData);
 
-    //       router.replace("/");
-    //       router.refresh();
-    //     },
-    //     onError(error: any) {
-    //       toast.error("Failed to log in!", {
-    //         description: error.error.message,
-    //         position: "bottom-right",
-    //       });
-    //     },
-    //   },
-    // });
+    if (res.serverError) {
+      toast.add({
+        title: "Signup failed!",
+        description: res.serverError || "An error occurred during signup.",
+        type: "error",
+      });
+      return;
+    }
+
+    toast.add({
+      title: "Account created successfully!",
+      description: "Welcome!",
+      type: "success",
+    });
+
+    form.reset();
+
+    router.replace("/");
   }
 
   return (

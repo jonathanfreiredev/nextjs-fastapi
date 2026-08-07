@@ -1,10 +1,11 @@
 import { createSafeActionClient } from "next-safe-action";
+import { env } from "./env";
 
 /**
  * Helper to simulate network latency in development mode
  */
 const simulateDelay = async () => {
-  if (process.env.NODE_ENV === "development") {
+  if (env.NODE_ENV === "development") {
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 };

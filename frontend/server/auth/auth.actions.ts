@@ -1,11 +1,15 @@
-"server only";
-import { signupFormSchema } from "@/components/auth/signup-form";
+"use server";
+
 import { publicProcedure } from "@/lib/safe-action";
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
+import { returnServerError } from "next-safe-action";
+import { loginFormSchema, signupFormSchema } from "./auth.schemas";
+
+const signupActionSchema = signupFormSchema.omit({ confirmPassword: true });
 
 export const signupAction = publicProcedure
-  .inputSchema(signupFormSchema.omit({ confirmPassword: true }))
+  .inputSchema(signupActionSchema)
   .action(async ({ parsedInput }) => {
     const response = await fetch(`${env.BACKEND_URL}/auth/signup`, {
       method: "POST",
@@ -16,8 +20,45 @@ export const signupAction = publicProcedure
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null);
-      throw new Error(errorData?.detail ?? "Error creating the user");
+      const errorData = await response.json();
+      returnServerError({
+        code: response.status,
+        message: errorData.error || "An error occurred during signup.",
+      });
+    }
+
+    const token = await response.json();
+
+    const cookieStore = await cookies();
+
+    cookieStore.set("access_token", token.access_token, {
+      httpOnly: true,
+      secure: env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 24,
+    });
+
+    return { success: true };
+  });
+
+export const loginAction = publicProcedure
+  .inputSchema(loginFormSchema)
+  .action(async ({ parsedInput }) => {
+    const response = await fetch(`${env.BACKEND_URL}/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(parsedInput),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      returnServerError({
+        code: response.status,
+        message: errorData.error || "An error occurred during login.",
+      });
     }
 
     const token = await response.json();

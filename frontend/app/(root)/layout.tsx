@@ -11,7 +11,7 @@ export default async function Layout({
   return (
     <>
       <Header session={session} />
-      {children}
+      <main className="relative flex flex-col">{children}</main>
     </>
   );
 }

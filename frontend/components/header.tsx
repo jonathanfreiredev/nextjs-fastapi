@@ -10,7 +10,7 @@ interface HeaderProps {
 
 export async function Header({ session }: HeaderProps) {
   return (
-    <header className="fixed h-24 w-full px-6">
+    <header className="fixed z-1 h-24 w-full px-6">
       <div className="flex h-full w-full items-center justify-between">
         <Link href="/" passHref className="flex h-full items-center">
           <h1 className="relative font-semibold text-gray-800">

@@ -65,7 +65,7 @@ export default async function HomePage() {
 
           <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
-              href="https://github.com/jonathanfreiredev/modern-nextjs-stack"
+              href="https://github.com/jonathanfreiredev/nextjs-fastapi"
               target="_blank"
               rel="noreferrer"
             >

@@ -4,6 +4,7 @@ import { updateUserSchema, updateUserPasswordSchema } from "./users.schemas";
 import { env } from "@/lib/env";
 import { returnServerError } from "next-safe-action";
 import { cookies } from "next/headers";
+import { setAuthCookies } from "@/server/auth/session";
 
 export const updateUserAction = protectedProcedure
   .inputSchema(updateUserSchema)
@@ -31,34 +32,35 @@ export const updateUserAction = protectedProcedure
 
     const updatedUser = await response.json();
 
-    const resUpdateToken = await fetch(`${env.BACKEND_URL}/auth/update-token`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${ctx.session.token}`,
-      },
-    });
+    // Changing the email invalidates the current access token (its `sub` is the
+    // old email), so exchange the refresh token for a fresh pair.
+    const cookieStore = await cookies();
+    const refreshToken = cookieStore.get("refresh_token")?.value;
 
-    if (!resUpdateToken.ok) {
-      const errorData = await resUpdateToken.json();
+    if (!refreshToken) {
       returnServerError({
-        code: resUpdateToken.status,
-        message:
-          errorData.detail || "An error occurred while updating the token.",
+        code: 401,
+        message: "Your session has expired. Please log in again.",
       });
     }
 
-    const newToken = await resUpdateToken.json();
-
-    const cookieStore = await cookies();
-
-    cookieStore.set("access_token", newToken.access_token, {
-      httpOnly: true,
-      secure: env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 24,
+    const refreshResponse = await fetch(`${env.BACKEND_URL}/auth/refresh`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ refresh_token: refreshToken }),
     });
+
+    if (!refreshResponse.ok) {
+      const errorData = await refreshResponse.json();
+      returnServerError({
+        code: refreshResponse.status,
+        message: errorData.detail || "An error occurred while refreshing the session.",
+      });
+    }
+
+    await setAuthCookies(await refreshResponse.json());
 
     return { success: true, user: updatedUser };
   });

@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 from fastapi.security import HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import refresh
 from app.auth.constants import ACCESS_TOKEN_EXPIRE_MINUTES, ALGORITHM, SECRET_KEY
 from app.auth.schemas import Token
 from app.auth.security import get_password_hash, verify_password
@@ -21,21 +22,34 @@ bearer_scheme = HTTPBearer()
 # FUNCTIONS
 
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None):
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
     now = utcnow()
     expire = now + (expires_delta or timedelta(minutes=30))
 
     to_encode.update({"exp": expire, "iat": now})
 
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+async def create_token_pair(db: AsyncSession, user: User) -> Token:
+    access_token = create_access_token(
+        data={"sub": user.email, "name": user.full_name},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+    refresh_token = await refresh.issue(db, user)
+
+    return Token(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+    )
 
 
 async def signup(db: AsyncSession, data: CreateUserDto):
     user = await users_service.create_user(db, data)
 
-    return await get_token(user)
+    return await create_token_pair(db, user)
 
 
 async def login(db: AsyncSession, data: LoginUserDto):
@@ -48,7 +62,7 @@ async def login(db: AsyncSession, data: LoginUserDto):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return await get_token(user)
+    return await create_token_pair(db, user)
 
 
 async def authenticate_user(db: AsyncSession, data: LoginUserDto):
@@ -62,13 +76,16 @@ async def authenticate_user(db: AsyncSession, data: LoginUserDto):
     return user
 
 
-async def get_token(user: User):
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.email, "name": user.full_name},
-        expires_delta=access_token_expires,
-    )
-    return Token(access_token=access_token, token_type="bearer")
+async def refresh_tokens(db: AsyncSession, raw_token: str):
+    user = await refresh.consume(db, raw_token)
+
+    return await create_token_pair(db, user)
+
+
+async def logout(db: AsyncSession, raw_token: str):
+    await refresh.revoke(db, raw_token)
+
+    return {"message": "Logged out"}
 
 
 async def verify_token(db: AsyncSession, token: str):
@@ -115,23 +132,12 @@ async def verify_token(db: AsyncSession, token: str):
         ) from None
 
 
-async def update_token(db: AsyncSession, email: str):
-    user = await users_service.get_user(db, email)
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-
-    return await get_token(user)
-
-
 async def logout_all_sessions(db: AsyncSession, email: str):
     user = await users_service.get_user(db, email)
 
     user.tokens_valid_after = utcnow()
-
     await db.commit()
+
+    await refresh.revoke_all_for_user(db, user.id)
 
     return {"message": "All sessions closed on all devices"}

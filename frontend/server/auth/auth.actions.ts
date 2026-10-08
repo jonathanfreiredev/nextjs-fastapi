@@ -1,10 +1,10 @@
 "use server";
 
 import { publicProcedure } from "@/lib/safe-action";
-import { cookies } from "next/headers";
 import { env } from "@/lib/env";
 import { returnServerError } from "next-safe-action";
 import { loginFormSchema, signupFormSchema } from "./auth.schemas";
+import { setAuthCookies } from "./session";
 import { logout } from "./auth.service";
 
 export const signupAction = publicProcedure
@@ -30,17 +30,7 @@ export const signupAction = publicProcedure
       });
     }
 
-    const token = await response.json();
-
-    const cookieStore = await cookies();
-
-    cookieStore.set("access_token", token.access_token, {
-      httpOnly: true,
-      secure: env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 24,
-    });
+    await setAuthCookies(await response.json());
 
     return { success: true };
   });
@@ -64,17 +54,7 @@ export const loginAction = publicProcedure
       });
     }
 
-    const token = await response.json();
-
-    const cookieStore = await cookies();
-
-    cookieStore.set("access_token", token.access_token, {
-      httpOnly: true,
-      secure: env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 24,
-    });
+    await setAuthCookies(await response.json());
 
     return { success: true };
   });

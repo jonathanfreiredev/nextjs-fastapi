@@ -19,11 +19,13 @@ The API for the [Next.js + FastAPI Starter](../README.md). It handles user accou
 backend/
 ├── app/
 │   ├── auth/
-│   │   ├── constants.py       # SECRET_KEY, ALGORITHM, token TTL
+│   │   ├── constants.py       # SECRET_KEY, ALGORITHM, access/refresh TTLs
+│   │   ├── models.py          # RefreshToken model (stored hashed)
+│   │   ├── refresh.py         # Refresh token issue/consume/revoke (rotation)
 │   │   ├── router.py          # /auth endpoints
-│   │   ├── schemas.py         # Token schema
+│   │   ├── schemas.py         # Token + RefreshTokenRequest schemas
 │   │   ├── security.py        # Password hashing (Argon2)
-│   │   └── service.py         # Token creation, verification, login/signup
+│   │   └── service.py         # Token pair creation, verification, signup/login
 │   ├── users/
 │   │   ├── models.py          # User ORM model
 │   │   ├── schemas.py         # Create/Update/Login DTOs
@@ -169,10 +171,11 @@ Protected endpoints require an `Authorization: Bearer <token>` header.
 
 | Method | Path                  | Auth | Description                           |
 | ------ | --------------------- | :--: | ------------------------------------- |
-| POST   | `/auth/signup`        |  –   | Create a user and return a token      |
-| POST   | `/auth/login`         |  –   | Authenticate and return a token       |
-| POST   | `/auth/update-token`  |  ✓   | Issue a fresh token for the current user |
-| POST   | `/auth/logout-all`    |  ✓   | Invalidate all tokens issued before now |
+| POST   | `/auth/signup`        |  –   | Create a user and return a token pair |
+| POST   | `/auth/login`         |  –   | Authenticate and return a token pair  |
+| POST   | `/auth/refresh`       |  –   | Exchange a refresh token for a new pair (rotates it) |
+| POST   | `/auth/logout`        |  –   | Revoke a refresh token                |
+| POST   | `/auth/logout-all`    |  ✓   | Revoke every refresh token for the user |
 | GET    | `/users/me/`          |  ✓   | Return the current user               |
 | PUT    | `/users/me/`          |  ✓   | Update name / email                   |
 | PUT    | `/users/me/password/` |  ✓   | Change the password                   |
@@ -188,7 +191,7 @@ Protected endpoints require an `Authorization: Bearer <token>` header.
 Response:
 
 ```json
-{ "access_token": "<jwt>", "token_type": "bearer" }
+{ "access_token": "<jwt>", "refresh_token": "<opaque>", "token_type": "bearer" }
 ```
 
 **PUT `/users/me/`**
@@ -205,9 +208,9 @@ Response:
 
 ## Authentication notes
 
-- Tokens are signed with **HS256** and expire after `ACCESS_TOKEN_EXPIRE_MINUTES` (24 hours, defined in `app/auth/constants.py`).
-- The token payload carries `sub` (email), `name`, `iat`, and `exp`.
-- Every user has a `tokens_valid_after` timestamp. Any token with an `iat` earlier than that value is rejected, which is how `logout-all` invalidates sessions across devices. Both values use **whole seconds** (the precision of a JWT `iat`), so a token issued in the same second as the logout is not invalidated — an inherent limit of second-precision tokens.
+- Access tokens are signed with **HS256** and expire after `ACCESS_TOKEN_EXPIRE_MINUTES` (15 minutes, in `app/auth/constants.py`). The payload carries `sub` (email), `name`, `iat`, and `exp`.
+- Refresh tokens are **opaque** random values, never exposed in decoded form: only a SHA-256 hash is stored in the `refresh_tokens` table. They live for `REFRESH_TOKEN_EXPIRE_DAYS` (30 days) and are **rotated** — each `/auth/refresh` revokes the used token and issues a new one, so a replayed token is rejected.
+- Every user has a `tokens_valid_after` timestamp. Any access token with an `iat` earlier than that value is rejected, which is how `logout-all` invalidates outstanding access tokens. Both values use **whole seconds** (the precision of a JWT `iat`), so a token issued in the same second as the logout is not invalidated — an inherent limit of second-precision tokens.
 - `get_current_user` resolves the bearer token to a `UserDto`, and `get_current_active_user` additionally rejects disabled accounts.
 
 ## Conventions

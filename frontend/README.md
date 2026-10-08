@@ -78,7 +78,8 @@ Variables are validated with `@t3-oss/env-nextjs` in `lib/env.js`. Set `SKIP_ENV
 
 ## How it works
 
-- **Session** — `server/auth/auth.lib.ts` reads the `access_token` HTTP-only cookie and **verifies** its JWT signature and expiry with `jose`, returning `{ session, user }` or `null`. Layouts and pages call `getSession()` to render signed-in vs. signed-out state. It needs `JWT_SECRET` (the same value as the backend `SECRET_KEY`) to verify the signature.
+- **Session** — cookies hold two tokens: `access_token` (15 min JWT) and `refresh_token` (30 days). `server/auth/auth.lib.ts` reads the `access_token` cookie and **verifies** its JWT signature and expiry with `jose`, returning `{ session, user }` or `null`. Layouts and pages call `getSession()` to render signed-in vs. signed-out state. It needs `JWT_SECRET` (the same value as the backend `SECRET_KEY`) to verify the signature.
+- **Token refresh** — `proxy.ts` (the file convention renamed from `middleware.ts` in Next 16) runs before rendering. If the access token is expired and a refresh token is present, it calls the backend `/auth/refresh`, rotates the pair, and updates both the request and response cookies so the current render is already authenticated.
 - **Server actions** — `server/auth/auth.actions.ts` and `server/users/users.actions.ts` call the backend with `fetch` and write the JWT into the cookie. Client components invoke them through `next-safe-action`.
 - **Protected actions** — `protectedProcedure` in `lib/safe-action.ts` requires a valid session and forwards the token in the `Authorization` header.
 - **Guards** — `app/auth/layout.tsx` redirects authenticated users away from login/signup, while `app/profile/page.tsx` redirects unauthenticated users to `/auth/login`.

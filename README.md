@@ -122,31 +122,36 @@ Open http://localhost:3000, sign up, and you should land back on the home page a
 | Variable      | Required | Description                                            |
 | ------------- | -------- | ------------------------------------------------------ |
 | `BACKEND_URL` | Yes      | Base URL of the FastAPI backend, e.g. `http://localhost:8000`. |
+| `JWT_SECRET`  | Yes      | Same value as the backend `SECRET_KEY`; used to verify the session JWT. |
 | `NODE_ENV`    | No       | Set automatically by Next.js.                          |
 
 Environment variables in the frontend are validated at startup with `@t3-oss/env-nextjs` (`lib/env.js`).
 
 ## API reference
 
-All endpoints live on the FastAPI backend. Protected routes expect an `Authorization: Bearer <token>` header.
+All endpoints live on the FastAPI backend. Protected routes expect an `Authorization: Bearer <access_token>` header.
 
 | Method | Path                  | Auth | Description                          |
 | ------ | --------------------- | :--: | ------------------------------------ |
-| POST   | `/auth/signup`        |  –   | Create an account and return a token |
-| POST   | `/auth/login`         |  –   | Authenticate and return a token      |
-| POST   | `/auth/update-token`  |  ✓   | Issue a fresh token for the current user |
-| POST   | `/auth/logout-all`    |  ✓   | Invalidate all previously issued tokens |
+| POST   | `/auth/signup`        |  –   | Create an account and return a token pair |
+| POST   | `/auth/login`         |  –   | Authenticate and return a token pair |
+| POST   | `/auth/refresh`       |  –   | Exchange a refresh token for a new pair (rotates it) |
+| POST   | `/auth/logout`        |  –   | Revoke a refresh token               |
+| POST   | `/auth/logout-all`    |  ✓   | Revoke every refresh token for the current user |
 | GET    | `/users/me/`          |  ✓   | Return the current user              |
-| PUT    | `/users/me/`          |  ✓   | Update name / email (and refresh the token) |
+| PUT    | `/users/me/`          |  ✓   | Update name / email                  |
 | PUT    | `/users/me/password/` |  ✓   | Change password                      |
+
+The access token is a short-lived JWT (15 minutes); the refresh token is an opaque, single-use value (30 days) stored hashed in the database.
 
 ## Authentication flow
 
 1. The user signs up or logs in through a **server action**.
-2. The action calls the backend, receives a JWT, and stores it in an **HTTP-only cookie** (`access_token`).
-3. `getSession()` (`frontend/server/auth/auth.lib.ts`) reads and decodes the cookie to build the session used by layouts and pages.
-4. Protected server actions use `protectedProcedure`, which rejects the request when there is no valid session and forwards the token to the backend.
-5. "Log out everywhere" bumps `tokens_valid_after` on the user, invalidating every token issued before that moment.
+2. The action calls the backend and stores the returned **token pair** in two HTTP-only cookies: `access_token` (15 min JWT) and `refresh_token` (30 days, opaque).
+3. `getSession()` (`frontend/server/auth/auth.lib.ts`) **verifies** the access token's signature and expiry to build the session used by layouts and pages.
+4. `proxy.ts` runs before rendering: when the access token is expired but a refresh token is present, it calls `/auth/refresh`, rotates the pair, and updates both the request and response cookies so the current render already sees the new tokens.
+5. Protected server actions use `protectedProcedure`, which rejects the request when there is no valid session and forwards the access token to the backend.
+6. Logout revokes the refresh token; "log out everywhere" revokes every refresh token for the user and bumps `tokens_valid_after`.
 
 ## Common commands
 

@@ -41,13 +41,15 @@ def test_create_access_token_carries_the_subject_and_timestamps():
     assert "exp" in payload
 
 
-async def test_get_token_builds_a_bearer_token_for_the_user():
+async def test_create_token_pair_returns_access_and_refresh_tokens():
     user = make_user()
 
-    token = await auth_service.get_token(user)
+    with patch("app.auth.service.refresh.issue", new=AsyncMock(return_value="raw-refresh")):
+        token = await auth_service.create_token_pair(AsyncMock(), user)
 
     payload = decode(token.access_token)
     assert token.token_type == "bearer"
+    assert token.refresh_token == "raw-refresh"
     assert payload["sub"] == user.email
     assert payload["name"] == user.full_name
 

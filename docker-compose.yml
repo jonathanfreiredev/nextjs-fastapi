@@ -1,0 +1,91 @@
+name: nextjs-fastapi
+
+# Local development stack: PostgreSQL plus the API and the web app, with the
+# source mounted and the dev servers running with reload.
+#
+#   docker compose up
+#
+# Deployment is not handled here: the frontend is meant for Vercel and the
+# backend for its own service. The backend Dockerfile also has a production
+# stage if you deploy it as a container.
+#
+# Change SECRET_KEY and POSTGRES_PASSWORD before using this anywhere but locally.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-nextjs-fastapi}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # One-shot service: applies migrations before the API starts.
+  migrate:
+    build:
+      context: ./backend
+      target: dev
+    command: ["alembic", "upgrade", "head"]
+    environment: &backend-env
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-nextjs-fastapi}
+      ENV: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ./backend
+      target: dev
+    command: ["fastapi", "dev", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *backend-env
+    volumes:
+      # Mount the source, but keep the image's Linux virtualenv untouched.
+      - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+      - ./backend/alembic.ini:/app/alembic.ini
+      - ./backend/pyproject.toml:/app/pyproject.toml
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+    command: ["pnpm", "dev"]
+    environment:
+      BACKEND_URL: http://backend:8000
+      # Must match the backend SECRET_KEY.
+      JWT_SECRET: ${SECRET_KEY:-dev-secret-change-me}
+    volumes:
+      # Mount the source, but keep the image's node_modules untouched.
+      - ./frontend/app:/app/app
+      - ./frontend/components:/app/components
+      - ./frontend/lib:/app/lib
+      - ./frontend/server:/app/server
+      - ./frontend/public:/app/public
+      - ./frontend/proxy.ts:/app/proxy.ts
+      - ./frontend/next.config.ts:/app/next.config.ts
+      - ./frontend/tsconfig.json:/app/tsconfig.json
+      - ./frontend/postcss.config.mjs:/app/postcss.config.mjs
+      - ./frontend/components.json:/app/components.json
+      - ./frontend/eslint.config.mjs:/app/eslint.config.mjs
+      - ./frontend/prettier.config.js:/app/prettier.config.js
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:

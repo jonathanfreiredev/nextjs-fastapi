@@ -39,13 +39,15 @@ The browser never talks to FastAPI directly. Server-side actions in `frontend/se
 .
 ├── backend/                 # FastAPI application
 │   ├── app/
-│   │   ├── auth/            # Signup, login, token handling, logout-all
+│   │   ├── auth/            # Signup, login, access/refresh tokens
 │   │   ├── users/           # User model, schemas, service, router
 │   │   ├── db/              # Async engine, session, base model
 │   │   ├── dependencies.py  # get_current_user / get_current_active_user
 │   │   ├── settings.py      # Pydantic settings (reads .env)
 │   │   └── main.py          # App entrypoint + CORS
 │   ├── alembic/             # Database migrations
+│   ├── tests/               # Unit + integration tests
+│   ├── Dockerfile           # Dev image (+ production stage)
 │   ├── start-database.sh    # Local PostgreSQL container helper
 │   └── pyproject.toml       # Dependencies (managed with uv)
 │
@@ -54,8 +56,12 @@ The browser never talks to FastAPI directly. Server-side actions in `frontend/se
 │   ├── components/          # UI + auth components (shadcn/ui based)
 │   ├── server/              # Server actions, schemas, session helpers
 │   ├── lib/                 # Env validation, safe-action client, utils
+│   ├── proxy.ts             # Token refresh on each request
+│   ├── Dockerfile           # Dev image
 │   └── package.json         # Dependencies (managed with pnpm)
 │
+├── .github/workflows/       # CI (backend + frontend)
+├── docker-compose.yml       # Local development stack
 └── LICENSE                  # MIT
 ```
 
@@ -63,7 +69,7 @@ The browser never talks to FastAPI directly. Server-side actions in `frontend/se
 
 - **Node.js** 20+ and **pnpm**
 - **Python** 3.14+ and [**uv**](https://docs.astral.sh/uv/)
-- **Docker** or **Podman** (for the local database), or an existing PostgreSQL instance
+- **Docker** or **Podman** if you want the containerized stack (or a local database via `start-database.sh`)
 
 ## Getting started
 
@@ -106,6 +112,18 @@ pnpm dev
 ```
 
 Open http://localhost:3000, sign up, and you should land back on the home page authenticated.
+
+## Run with Docker
+
+`docker-compose.yml` is a **local development** stack: PostgreSQL plus the API and the web app, with the source mounted and the dev servers running with reload.
+
+```bash
+docker compose up
+```
+
+A one-shot `migrate` service runs `alembic upgrade head` before the API starts, so the schema is always up to date.
+
+Deployment is not handled here: the frontend goes to Vercel (which builds it natively) and the backend to its own service. The `backend/Dockerfile` also has a production stage if you deploy it as a container.
 
 ## Environment variables
 
@@ -177,6 +195,13 @@ The access token is a short-lived JWT (15 minutes); the refresh token is an opaq
 | `pnpm build`   | Production build                |
 | `pnpm start`   | Serve the production build      |
 | `pnpm lint`    | Run ESLint                      |
+
+## Continuous integration
+
+GitHub Actions runs two path-filtered workflows, so a change in one app does not trigger the other:
+
+- `.github/workflows/backend.yml` — lints, checks formatting, applies migrations and runs the tests against a PostgreSQL service container.
+- `.github/workflows/frontend.yml` — lints, type-checks and builds the Next.js app.
 
 ## License
 

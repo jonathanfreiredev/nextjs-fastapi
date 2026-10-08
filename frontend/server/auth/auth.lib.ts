@@ -1,6 +1,7 @@
 "use server";
 import { cookies } from "next/headers";
-import { jwtDecode } from "jwt-decode";
+import { jwtVerify } from "jose";
+import { env } from "@/lib/env";
 
 export type Session = {
   session: {
@@ -13,7 +14,9 @@ export type Session = {
   };
 };
 
-export async function getSession() {
+const secret = new TextEncoder().encode(env.JWT_SECRET);
+
+export async function getSession(): Promise<Session | null> {
   const cookieStore = await cookies();
   const access_token = cookieStore.get("access_token");
 
@@ -21,23 +24,24 @@ export async function getSession() {
     return null;
   }
 
-  const decodedToken: { sub: string; name: string; exp: number } = jwtDecode(
-    access_token.value,
-  );
-  const currentTime = Math.floor(Date.now() / 1000);
+  try {
+    // Verifies the signature and the expiry; decoding alone would trust a forged cookie.
+    const { payload } = await jwtVerify(access_token.value, secret, {
+      algorithms: ["HS256"],
+    });
 
-  if (decodedToken.exp < currentTime) {
+    return {
+      session: {
+        token: access_token.value,
+        expiresAt: new Date((payload.exp as number) * 1000).toISOString(),
+      },
+      user: {
+        email: payload.sub as string,
+        name: payload.name as string,
+      },
+    };
+  } catch {
+    // Malformed, tampered or expired token.
     return null;
   }
-
-  return {
-    session: {
-      token: access_token.value,
-      expiresAt: new Date(decodedToken.exp * 1000).toISOString(),
-    },
-    user: {
-      email: decodedToken.sub,
-      name: decodedToken.name,
-    },
-  };
 }

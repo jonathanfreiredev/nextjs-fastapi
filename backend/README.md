@@ -8,7 +8,7 @@ The API for the [Next.js + FastAPI Starter](../README.md). It handles user accou
 - **SQLAlchemy 2.0** (async) with **asyncpg** — ORM and driver
 - **Alembic** — database migrations
 - **Pydantic v2 / pydantic-settings** — schemas and configuration
-- **PyJWT** (HS256) — access tokens
+- **PyJWT** (RS256) with **cryptography** — signing access tokens
 - **pwdlib[argon2]** — password hashing
 - **uv** — dependency management
 - **ruff** — linting and formatting
@@ -19,7 +19,8 @@ The API for the [Next.js + FastAPI Starter](../README.md). It handles user accou
 backend/
 ├── app/
 │   ├── auth/
-│   │   ├── constants.py       # SECRET_KEY, ALGORITHM, access/refresh TTLs
+│   │   ├── constants.py       # Algorithm and access/refresh TTLs
+│   │   ├── keys.py            # RSA key loading, JWKS and key id
 │   │   ├── models.py          # RefreshToken model (stored hashed)
 │   │   ├── refresh.py         # Refresh token issue/consume/revoke (rotation)
 │   │   ├── router.py          # /auth endpoints
@@ -38,6 +39,8 @@ backend/
 │   ├── settings.py            # Settings loaded from .env
 │   └── main.py                # FastAPI app, routers, CORS
 ├── alembic/                   # Migrations (async env.py)
+├── scripts/
+│   └── generate_keys.py       # Generate the RSA key pair
 ├── alembic.ini
 ├── start-database.sh          # Starts a local PostgreSQL container
 ├── pyproject.toml
@@ -58,6 +61,9 @@ cd backend
 # Install dependencies into .venv
 uv sync
 
+# Generate the RSA key pair used to sign JWTs (writes keys/, gitignored)
+uv run python scripts/generate_keys.py
+
 # Create your environment file
 cp .env.example .env
 
@@ -75,20 +81,17 @@ uv run alembic upgrade head
 Create `backend/.env`:
 
 ```dotenv
-# openssl rand -hex 32
-SECRET_KEY=your-random-secret
-
 # DATABASE
 DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/app
 ```
 
-| Variable       | Required | Default       | Description                                                        |
-| -------------- | -------- | ------------- | ------------------------------------------------------------------ |
-| `SECRET_KEY`   | Yes      | –             | Used to sign JWTs.                                                 |
-| `DATABASE_URL` | Yes      | –             | Async connection string. Must use the `postgresql+asyncpg://` driver. |
-| `ENV`          | No       | `development` | `development` enables SQL echo; anything else disables debug mode.  |
+| Variable          | Required | Default       | Description                                                        |
+| ----------------- | -------- | ------------- | ------------------------------------------------------------------ |
+| `DATABASE_URL`    | Yes      | –             | Async connection string. Must use the `postgresql+asyncpg://` driver. |
+| `ENV`             | No       | `development` | `development` enables SQL echo; anything else disables debug mode.  |
+| `JWT_PRIVATE_KEY` | No       | –             | PEM contents of the RSA private key. When unset in development, `keys/private.pem` is used, or an ephemeral key is generated if missing. |
 
-Settings are defined in `app/settings.py` and loaded from `backend/.env`.
+Settings are defined in `app/settings.py` and loaded from `backend/.env`. In production, set `JWT_PRIVATE_KEY` from your secret store instead of shipping the key file.
 
 ## Running the server
 
@@ -176,6 +179,7 @@ Protected endpoints require an `Authorization: Bearer <token>` header.
 | POST   | `/auth/refresh`       |  –   | Exchange a refresh token for a new pair (rotates it) |
 | POST   | `/auth/logout`        |  –   | Revoke a refresh token                |
 | POST   | `/auth/logout-all`    |  ✓   | Revoke every refresh token for the user |
+| GET    | `/.well-known/jwks.json` | – | Public keys used to verify access tokens |
 | GET    | `/users/me/`          |  ✓   | Return the current user               |
 | PUT    | `/users/me/`          |  ✓   | Update name / email                   |
 | PUT    | `/users/me/password/` |  ✓   | Change the password                   |
@@ -208,7 +212,8 @@ Response:
 
 ## Authentication notes
 
-- Access tokens are signed with **HS256** and expire after `ACCESS_TOKEN_EXPIRE_MINUTES` (15 minutes, in `app/auth/constants.py`). The payload carries `sub` (email), `name`, `iat`, and `exp`.
+- Access tokens are signed with **RS256** (asymmetric) and expire after `ACCESS_TOKEN_EXPIRE_MINUTES` (15 minutes, in `app/auth/constants.py`). The payload carries `sub` (email), `name`, `iat`, and `exp`. The private key lives **only in the backend**; the public key is served at `/.well-known/jwks.json` so the frontend can verify tokens without being able to sign them.
+- The RSA key pair is loaded in `app/auth/keys.py`: from `JWT_PRIVATE_KEY`, else `keys/private.pem`, else an ephemeral key in development. Generate a stable pair with `uv run python scripts/generate_keys.py`.
 - Refresh tokens are **opaque** random values, never exposed in decoded form: only a SHA-256 hash is stored in the `refresh_tokens` table. They live for `REFRESH_TOKEN_EXPIRE_DAYS` (30 days) and are **rotated** — each `/auth/refresh` revokes the used token and issues a new one, so a replayed token is rejected.
 - Every user has a `tokens_valid_after` timestamp. Any access token with an `iat` earlier than that value is rejected, which is how `logout-all` invalidates outstanding access tokens. Both values use **whole seconds** (the precision of a JWT `iat`), so a token issued in the same second as the logout is not invalidated — an inherent limit of second-precision tokens.
 - `get_current_user` resolves the bearer token to a `UserDto`, and `get_current_active_user` additionally rejects disabled accounts.

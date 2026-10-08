@@ -18,9 +18,8 @@ jobs:
         working-directory: frontend
 
     env:
-      # Dummy values so the build passes env validation.
+      # Dummy value so the build passes env validation.
       BACKEND_URL: http://localhost:8000
-      JWT_SECRET: ci-secret-key-for-tests-only
 
     steps:
       - uses: actions/checkout@v4

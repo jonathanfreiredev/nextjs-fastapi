@@ -23,6 +23,16 @@ async def test_signup_returns_a_token_pair(client):
     assert body["refresh_token"]
 
 
+async def test_jwks_exposes_the_rs256_public_key(client):
+    response = await client.get("/.well-known/jwks.json")
+
+    assert response.status_code == 200
+    key = response.json()["keys"][0]
+    assert key["kty"] == "RSA"
+    assert key["alg"] == "RS256"
+    assert key["kid"]
+
+
 async def test_signup_with_duplicate_email_conflicts(client):
     await client.post("/auth/signup", json=PAYLOAD)
 

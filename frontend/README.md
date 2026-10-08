@@ -50,13 +50,11 @@ frontend/
 pnpm install
 ```
 
-Copy the example environment file and fill in the values:
+Copy the example environment file:
 
 ```bash
 cp .env.example .env
 ```
-
-`JWT_SECRET` must be the same value as the backend `SECRET_KEY`.
 
 Then start the dev server:
 
@@ -71,14 +69,13 @@ Open http://localhost:3000. The backend must be running for signup and login to 
 | Variable      | Required | Description                                                  |
 | ------------- | -------- | ------------------------------------------------------------ |
 | `BACKEND_URL` | Yes      | Base URL of the FastAPI backend.                             |
-| `JWT_SECRET`  | Yes      | Same value as the backend `SECRET_KEY`; used to verify the session JWT. |
 | `NODE_ENV`    | No       | Set automatically by Next.js.                                |
 
 Variables are validated with `@t3-oss/env-nextjs` in `lib/env.js`. Set `SKIP_ENV_VALIDATION=1` to bypass validation (useful for Docker builds).
 
 ## How it works
 
-- **Session** — cookies hold two tokens: `access_token` (15 min JWT) and `refresh_token` (30 days). `server/auth/auth.lib.ts` reads the `access_token` cookie and **verifies** its JWT signature and expiry with `jose`, returning `{ session, user }` or `null`. Layouts and pages call `getSession()` to render signed-in vs. signed-out state. It needs `JWT_SECRET` (the same value as the backend `SECRET_KEY`) to verify the signature.
+- **Session** — cookies hold two tokens: `access_token` (15 min JWT) and `refresh_token` (30 days). `server/auth/auth.lib.ts` reads the `access_token` cookie and **verifies** its RS256 signature and expiry with `jose`, using the public keys fetched from the backend's `/.well-known/jwks.json`. It returns `{ session, user }` or `null`. Layouts and pages call `getSession()` to render signed-in vs. signed-out state. The frontend never holds the signing key.
 - **Token refresh** — `proxy.ts` (the file convention renamed from `middleware.ts` in Next 16) runs before rendering. If the access token is expired and a refresh token is present, it calls the backend `/auth/refresh`, rotates the pair, and updates both the request and response cookies so the current render is already authenticated.
 - **Server actions** — `server/auth/auth.actions.ts` and `server/users/users.actions.ts` call the backend with `fetch` and write the JWT into the cookie. Client components invoke them through `next-safe-action`.
 - **Protected actions** — `protectedProcedure` in `lib/safe-action.ts` requires a valid session and forwards the token in the `Authorization` header.

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { jwtVerify } from "jose";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import { env } from "@/lib/env";
 import { accessTokenCookieOptions, refreshTokenCookieOptions } from "@/server/auth/cookies";
 
-const secret = new TextEncoder().encode(env.JWT_SECRET);
+// Public key set, fetched from the backend and cached by jose.
+const jwks = createRemoteJWKSet(new URL("/.well-known/jwks.json", env.BACKEND_URL));
 
 async function isAccessTokenValid(token: string | undefined): Promise<boolean> {
   if (!token) {
@@ -13,7 +14,7 @@ async function isAccessTokenValid(token: string | undefined): Promise<boolean> {
   }
 
   try {
-    await jwtVerify(token, secret, { algorithms: ["HS256"] });
+    await jwtVerify(token, jwks, { algorithms: ["RS256"] });
     return true;
   } catch {
     return false;

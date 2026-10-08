@@ -12,7 +12,7 @@ The template ships with signup, login, profile editing, password change, token r
 | Forms      | React Hook Form, Zod, next-safe-action                                             |
 | Backend    | FastAPI, SQLAlchemy 2 (async), Pydantic v2                                          |
 | Database   | PostgreSQL, Alembic migrations                                                     |
-| Auth       | JWT (HS256), Argon2 password hashing, HTTP-only cookies                            |
+| Auth       | JWT (RS256) with a JWKS endpoint, Argon2 password hashing, HTTP-only cookies |
 
 ## Architecture
 
@@ -129,18 +129,17 @@ Deployment is not handled here: the frontend goes to Vercel (which builds it nat
 
 ### `backend/.env`
 
-| Variable       | Required | Description                                                                 |
-| -------------- | -------- | --------------------------------------------------------------------------- |
-| `SECRET_KEY`   | Yes      | Secret used to sign JWTs. Generate one with `openssl rand -hex 32`.         |
-| `DATABASE_URL` | Yes      | Async PostgreSQL URL, e.g. `postgresql+asyncpg://postgres:password@localhost:5432/app`. |
-| `ENV`          | No       | `development` (default) or `production`. Enables SQL echo when in development. |
+| Variable          | Required | Description                                                                 |
+| ----------------- | -------- | --------------------------------------------------------------------------- |
+| `DATABASE_URL`    | Yes      | Async PostgreSQL URL, e.g. `postgresql+asyncpg://postgres:password@localhost:5432/app`. |
+| `ENV`             | No       | `development` (default) or `production`. Enables SQL echo when in development. |
+| `JWT_PRIVATE_KEY` | No       | PEM contents of the RSA signing key. Unset in development: `keys/private.pem` is used, or an ephemeral key is generated. |
 
 ### `frontend/.env`
 
 | Variable      | Required | Description                                            |
 | ------------- | -------- | ------------------------------------------------------ |
 | `BACKEND_URL` | Yes      | Base URL of the FastAPI backend, e.g. `http://localhost:8000`. |
-| `JWT_SECRET`  | Yes      | Same value as the backend `SECRET_KEY`; used to verify the session JWT. |
 | `NODE_ENV`    | No       | Set automatically by Next.js.                          |
 
 Environment variables in the frontend are validated at startup with `@t3-oss/env-nextjs` (`lib/env.js`).
@@ -166,7 +165,7 @@ The access token is a short-lived JWT (15 minutes); the refresh token is an opaq
 
 1. The user signs up or logs in through a **server action**.
 2. The action calls the backend and stores the returned **token pair** in two HTTP-only cookies: `access_token` (15 min JWT) and `refresh_token` (30 days, opaque).
-3. `getSession()` (`frontend/server/auth/auth.lib.ts`) **verifies** the access token's signature and expiry to build the session used by layouts and pages.
+3. `getSession()` (`frontend/server/auth/auth.lib.ts`) **verifies** the access token's RS256 signature and expiry using the public keys from the backend's `/.well-known/jwks.json`. The frontend never holds the signing key.
 4. `proxy.ts` runs before rendering: when the access token is expired but a refresh token is present, it calls `/auth/refresh`, rotates the pair, and updates both the request and response cookies so the current render already sees the new tokens.
 5. Protected server actions use `protectedProcedure`, which rejects the request when there is no valid session and forwards the access token to the backend.
 6. Logout revokes the refresh token; "log out everywhere" revokes every refresh token for the user and bumps `tokens_valid_after`.

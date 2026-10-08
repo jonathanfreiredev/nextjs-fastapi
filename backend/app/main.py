@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.auth.keys import JWKS
 from app.auth.router import auth_router
 from app.users.router import users_router
 
@@ -8,6 +9,13 @@ app = FastAPI()
 
 app.include_router(auth_router)
 app.include_router(users_router)
+
+
+@app.get("/.well-known/jwks.json")
+async def jwks() -> dict:
+    """Public keys the frontend uses to verify access tokens locally."""
+    return JWKS
+
 
 app.add_middleware(
     CORSMiddleware,

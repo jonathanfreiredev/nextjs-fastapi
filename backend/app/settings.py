@@ -7,8 +7,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     env: str = "development"
-    secret_key: str
     database_url: str
+    # PEM contents of the RSA private key used to sign JWTs. When unset, the key
+    # is read from keys/private.pem (see app/auth/keys.py).
+    jwt_private_key: str | None = None
 
     @property
     def debug(self) -> bool:

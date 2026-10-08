@@ -9,7 +9,7 @@ name: nextjs-fastapi
 # backend for its own service. The backend Dockerfile also has a production
 # stage if you deploy it as a container.
 #
-# Change SECRET_KEY and POSTGRES_PASSWORD before using this anywhere but locally.
+# Change POSTGRES_PASSWORD before using this anywhere but locally.
 services:
   postgres:
     image: postgres:17
@@ -34,7 +34,6 @@ services:
       target: dev
     command: ["alembic", "upgrade", "head"]
     environment: &backend-env
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-nextjs-fastapi}
       ENV: development
     depends_on:
@@ -54,6 +53,8 @@ services:
       - ./backend/alembic:/app/alembic
       - ./backend/alembic.ini:/app/alembic.ini
       - ./backend/pyproject.toml:/app/pyproject.toml
+      # JWT signing key (optional; an ephemeral one is generated if missing).
+      - ./backend/keys:/app/keys
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -66,8 +67,6 @@ services:
     command: ["pnpm", "dev"]
     environment:
       BACKEND_URL: http://backend:8000
-      # Must match the backend SECRET_KEY.
-      JWT_SECRET: ${SECRET_KEY:-dev-secret-change-me}
     volumes:
       # Mount the source, but keep the image's node_modules untouched.
       - ./frontend/app:/app/app

@@ -6,7 +6,8 @@ import pytest
 from fastapi import HTTPException
 
 from app.auth import service as auth_service
-from app.auth.constants import ALGORITHM, SECRET_KEY
+from app.auth.constants import ALGORITHM
+from app.auth.keys import public_key
 from app.auth.security import get_password_hash
 from app.users.models import User
 from app.users.schemas import LoginUserDto
@@ -15,7 +16,7 @@ pytestmark = pytest.mark.anyio
 
 
 def decode(token: str) -> dict:
-    return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    return jwt.decode(token, public_key, algorithms=[ALGORITHM])
 
 
 def make_user(
@@ -39,6 +40,14 @@ def test_create_access_token_carries_the_subject_and_timestamps():
     assert payload["sub"] == "jane@example.com"
     assert "iat" in payload
     assert "exp" in payload
+
+
+def test_access_tokens_are_signed_with_rs256():
+    token = auth_service.create_access_token({"sub": "jane@example.com"})
+
+    header = jwt.get_unverified_header(token)
+    assert header["alg"] == "RS256"
+    assert header["kid"]
 
 
 async def test_create_token_pair_returns_access_and_refresh_tokens():

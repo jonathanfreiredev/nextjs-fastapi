@@ -6,7 +6,8 @@ from fastapi.security import HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import refresh
-from app.auth.constants import ACCESS_TOKEN_EXPIRE_MINUTES, ALGORITHM, SECRET_KEY
+from app.auth.constants import ACCESS_TOKEN_EXPIRE_MINUTES, ALGORITHM
+from app.auth.keys import KID, private_key, public_key
 from app.auth.schemas import Token
 from app.auth.security import get_password_hash, verify_password
 from app.db.models import utcnow
@@ -29,7 +30,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
 
     to_encode.update({"exp": expire, "iat": now})
 
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(to_encode, private_key, algorithm=ALGORITHM, headers={"kid": KID})
 
 
 async def create_token_pair(db: AsyncSession, user: User) -> Token:
@@ -90,7 +91,7 @@ async def logout(db: AsyncSession, raw_token: str):
 
 async def verify_token(db: AsyncSession, token: str):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, public_key, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         if email is None:
             raise HTTPException(

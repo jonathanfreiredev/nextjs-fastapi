@@ -1,22 +1,12 @@
 import { env } from "@/lib/env";
 
-// Keep these in sync with the backend token TTLs (app/auth/constants.py).
-export const ACCESS_TOKEN_MAX_AGE = 15 * 60; // 15 minutes
-export const REFRESH_TOKEN_MAX_AGE = 30 * 24 * 60 * 60; // 30 days
+// Keep in sync with ACCESS_TOKEN_LIFETIME_SECONDS (backend/app/auth/constants.py).
+export const ACCESS_TOKEN_MAX_AGE = 60 * 60 * 24; // 24 hours
 
-const baseCookieOptions = {
+export const accessTokenCookieOptions = {
   httpOnly: true,
   secure: env.NODE_ENV === "production",
   sameSite: "lax" as const,
   path: "/",
-};
-
-export const accessTokenCookieOptions = {
-  ...baseCookieOptions,
   maxAge: ACCESS_TOKEN_MAX_AGE,
-};
-
-export const refreshTokenCookieOptions = {
-  ...baseCookieOptions,
-  maxAge: REFRESH_TOKEN_MAX_AGE,
 };

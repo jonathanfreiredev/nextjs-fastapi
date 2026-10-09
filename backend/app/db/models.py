@@ -10,9 +10,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 def utcnow() -> datetime:
     """Current UTC time truncated to whole seconds.
 
-    JWT `iat` and `exp` are encoded with second precision, so any timestamp that
-    is compared against them must use the same precision, otherwise a token
-    issued in the same second as a `logout-all` is wrongly rejected.
+    JWT `iat` and `exp` are encoded with second precision, so timestamps kept in
+    the database use the same precision to avoid off-by-one-second mismatches.
     """
     return datetime.now(UTC).replace(microsecond=0)
 

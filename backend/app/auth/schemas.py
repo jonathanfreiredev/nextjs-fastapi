@@ -1,11 +1,21 @@
+import uuid
+
+from fastapi_users import schemas
 from pydantic import BaseModel
 
 
-class Token(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str
+class UserRead(schemas.BaseUser[uuid.UUID]):
+    full_name: str | None = None
 
 
-class RefreshTokenRequest(BaseModel):
-    refresh_token: str
+class UserCreate(schemas.BaseUserCreate):
+    full_name: str | None = None
+
+
+class UserUpdate(schemas.BaseUserUpdate):
+    full_name: str | None = None
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str

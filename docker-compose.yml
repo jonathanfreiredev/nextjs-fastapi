@@ -36,6 +36,8 @@ services:
     environment: &backend-env
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-nextjs-fastapi}
       ENV: development
+      AUTH_SECRET: ${AUTH_SECRET:-dev-auth-secret-change-me}
+      FRONTEND_URL: http://localhost:3000
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,17 +1,17 @@
-from datetime import datetime
-
+from sqlalchemy import Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.models import BaseModel, utcnow
+from app.db.models import BaseModel
 
 
 class User(BaseModel):
     __tablename__ = "users"
 
-    email: Mapped[str | None] = mapped_column(default=None)
+    email: Mapped[str] = mapped_column(unique=True, index=True)
     full_name: Mapped[str | None] = mapped_column(default=None)
-    disabled: Mapped[bool | None] = mapped_column(default=None)
     hashed_password: Mapped[str]
 
-    # A callable default: evaluated per insert, not once at import time.
-    tokens_valid_after: Mapped[datetime] = mapped_column(default=utcnow)
+    # Expected by FastAPI Users' user protocol.
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)

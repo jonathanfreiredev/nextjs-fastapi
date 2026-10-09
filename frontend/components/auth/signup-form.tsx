@@ -68,13 +68,12 @@ export function SignupForm({
 
     toast.add({
       title: "Account created successfully!",
-      description: "Welcome!",
+      description: "Check your email to verify your account, then log in.",
       type: "success",
     });
 
     form.reset();
-    router.refresh();
-    router.replace("/");
+    router.replace("/auth/login");
   }
 
   return (

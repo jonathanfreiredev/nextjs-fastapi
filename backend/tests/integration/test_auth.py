@@ -1,26 +1,82 @@
-import asyncio
-
+import jwt
 import pytest
 
-from tests.helpers import auth_header, signup, signup_tokens
+from app.auth.constants import ALGORITHM
+from app.auth.keys import public_key
+from tests.helpers import auth_header, register, signup
 
 pytestmark = pytest.mark.anyio
 
-PAYLOAD = {
-    "full_name": "Jane Doe",
-    "email": "jane@example.com",
-    "password": "supersecret",
-}
+PAYLOAD = {"email": "jane@example.com", "password": "supersecret", "full_name": "Jane Doe"}
 
 
-async def test_signup_returns_a_token_pair(client):
-    response = await client.post("/auth/signup", json=PAYLOAD)
+async def test_register_creates_an_unverified_user_and_sends_a_verification_email(
+    client, email_outbox
+):
+    response = await client.post("/auth/register", json=PAYLOAD)
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["email"] == PAYLOAD["email"]
+    assert body["full_name"] == PAYLOAD["full_name"]
+    assert body["is_verified"] is False
+    assert len(email_outbox["verify"]) == 1
+
+
+async def test_register_with_duplicate_email_is_rejected(client):
+    await register(client)
+
+    response = await client.post("/auth/register", json=PAYLOAD)
+
+    assert response.status_code == 400
+
+
+async def test_login_returns_an_rs256_access_token(client):
+    await register(client)
+
+    response = await client.post(
+        "/auth/jwt/login",
+        data={"username": PAYLOAD["email"], "password": PAYLOAD["password"]},
+    )
 
     assert response.status_code == 200
-    body = response.json()
-    assert body["token_type"] == "bearer"
-    assert body["access_token"]
-    assert body["refresh_token"]
+    token = response.json()["access_token"]
+
+    header = jwt.get_unverified_header(token)
+    assert header["alg"] == ALGORITHM
+    assert header["kid"]
+
+    payload = jwt.decode(token, public_key, algorithms=[ALGORITHM], audience="fastapi-users:auth")
+    assert payload["aud"] == ["fastapi-users:auth"]
+    assert payload["sub"]
+
+
+async def test_login_with_wrong_password_is_rejected(client):
+    await register(client)
+
+    response = await client.post(
+        "/auth/jwt/login",
+        data={"username": PAYLOAD["email"], "password": "wrongpassword"},
+    )
+
+    assert response.status_code == 400
+
+
+async def test_login_with_unknown_email_is_rejected(client):
+    response = await client.post(
+        "/auth/jwt/login",
+        data={"username": "nobody@example.com", "password": "whatever123"},
+    )
+
+    assert response.status_code == 400
+
+
+async def test_logout_returns_no_content(client):
+    token = await signup(client)
+
+    response = await client.post("/auth/jwt/logout", headers=auth_header(token))
+
+    assert response.status_code == 204
 
 
 async def test_jwks_exposes_the_rs256_public_key(client):
@@ -33,96 +89,41 @@ async def test_jwks_exposes_the_rs256_public_key(client):
     assert key["kid"]
 
 
-async def test_signup_with_duplicate_email_conflicts(client):
-    await client.post("/auth/signup", json=PAYLOAD)
+async def test_email_verification_flow(client, email_outbox):
+    await register(client)
+    _, token = email_outbox["verify"][0]
 
-    response = await client.post("/auth/signup", json=PAYLOAD)
-
-    assert response.status_code == 409
-
-
-async def test_login_with_correct_credentials(client):
-    await client.post("/auth/signup", json=PAYLOAD)
-
-    response = await client.post(
-        "/auth/login",
-        json={"email": PAYLOAD["email"], "password": PAYLOAD["password"]},
-    )
+    response = await client.post("/auth/verify", json={"token": token})
 
     assert response.status_code == 200
-    assert response.json()["access_token"]
+    assert response.json()["is_verified"] is True
+
+    # A verification token is single successful use only.
+    reused = await client.post("/auth/verify", json={"token": token})
+    assert reused.status_code == 400
 
 
-async def test_login_with_wrong_password(client):
-    await client.post("/auth/signup", json=PAYLOAD)
+async def test_forgot_and_reset_password_flow(client, email_outbox):
+    await register(client)
 
-    response = await client.post(
-        "/auth/login",
-        json={"email": PAYLOAD["email"], "password": "wrongpassword"},
+    forgot = await client.post("/auth/forgot-password", json={"email": PAYLOAD["email"]})
+    assert forgot.status_code == 202
+
+    _, token = email_outbox["reset"][0]
+    reset = await client.post(
+        "/auth/reset-password",
+        json={"token": token, "password": "newsecret123"},
     )
+    assert reset.status_code == 200
 
-    assert response.status_code == 401
-
-
-async def test_login_with_unknown_email(client):
-    response = await client.post(
-        "/auth/login",
-        json={"email": "nobody@example.com", "password": "whatever123"},
+    old_login = await client.post(
+        "/auth/jwt/login",
+        data={"username": PAYLOAD["email"], "password": PAYLOAD["password"]},
     )
+    assert old_login.status_code == 400
 
-    assert response.status_code == 401
-
-
-async def test_refresh_returns_a_new_usable_access_token(client):
-    tokens = await signup_tokens(client)
-
-    response = await client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
-
-    assert response.status_code == 200
-    new_tokens = response.json()
-    assert new_tokens["refresh_token"] != tokens["refresh_token"]
-
-    me = await client.get("/users/me/", headers=auth_header(new_tokens["access_token"]))
-    assert me.status_code == 200
-
-
-async def test_refresh_rotates_and_revokes_the_previous_token(client):
-    tokens = await signup_tokens(client)
-
-    first = await client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
-    assert first.status_code == 200
-
-    # Reusing the original refresh token must fail (it was rotated out).
-    replay = await client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
-    assert replay.status_code == 401
-
-
-async def test_refresh_with_an_invalid_token_is_rejected(client):
-    response = await client.post("/auth/refresh", json={"refresh_token": "not-a-real-token"})
-
-    assert response.status_code == 401
-
-
-async def test_logout_revokes_the_refresh_token(client):
-    tokens = await signup_tokens(client)
-
-    logout = await client.post("/auth/logout", json={"refresh_token": tokens["refresh_token"]})
-    assert logout.status_code == 200
-
-    response = await client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
-    assert response.status_code == 401
-
-
-async def test_logout_all_invalidates_previous_tokens(client):
-    token = await signup(client)
-    headers = auth_header(token)
-
-    assert (await client.get("/users/me/", headers=headers)).status_code == 200
-
-    # `iat` and `tokens_valid_after` are both second-precision, so the token and
-    # the logout must land in different seconds to be distinguishable.
-    await asyncio.sleep(1.05)
-
-    assert (await client.post("/auth/logout-all", headers=headers)).status_code == 200
-
-    assert (await client.get("/users/me/", headers=headers)).status_code == 401
+    new_login = await client.post(
+        "/auth/jwt/login",
+        data={"username": PAYLOAD["email"], "password": "newsecret123"},
+    )
+    assert new_login.status_code == 200

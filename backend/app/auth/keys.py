@@ -49,5 +49,16 @@ def _public_jwk(public_key: rsa.RSAPublicKey) -> dict:
 private_key = _load_private_key()
 public_key = private_key.public_key()
 
+# PEM serializations, as expected by FastAPI Users' JWTStrategy.
+PRIVATE_KEY_PEM = private_key.private_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PrivateFormat.PKCS8,
+    encryption_algorithm=serialization.NoEncryption(),
+).decode()
+PUBLIC_KEY_PEM = public_key.public_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PublicFormat.SubjectPublicKeyInfo,
+).decode()
+
 JWKS = {"keys": [_public_jwk(public_key)]}
 KID = JWKS["keys"][0]["kid"]

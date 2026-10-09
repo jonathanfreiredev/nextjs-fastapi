@@ -1,9 +1,14 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth.keys import JWKS
 from app.auth.router import auth_router
 from app.users.router import users_router
+
+# Show application logs (e.g. the development email sender) in the console.
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI()
 

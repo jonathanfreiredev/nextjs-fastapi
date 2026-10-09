@@ -1,6 +1,5 @@
 "use client";
 import { zodResolver } from "@hookform/resolvers/zod";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "@/components/ui/toast";
@@ -23,45 +22,51 @@ import {
   FieldSet,
 } from "../ui/field";
 import { Input } from "../ui/input";
-import { loginFormSchema } from "@/server/auth/auth.schemas";
-import { loginAction } from "@/server/auth/auth.actions";
+import { resetPasswordAction } from "@/server/auth/auth.actions";
+import { resetPasswordSchema } from "@/server/auth/auth.schemas";
 
-export const LoginForm = ({
+export const ResetPasswordForm = ({
+  token,
   className,
   ...props
-}: React.ComponentProps<"div">) => {
+}: React.ComponentProps<"div"> & { token: string }) => {
   const router = useRouter();
 
-  const form = useForm<z.infer<typeof loginFormSchema>>({
-    resolver: zodResolver(loginFormSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-    },
+  const form = useForm<z.infer<typeof resetPasswordSchema>>({
+    resolver: zodResolver(resetPasswordSchema),
+    defaultValues: { token, password: "", confirmPassword: "" },
   });
 
-  async function onSubmit(data: z.infer<typeof loginFormSchema>) {
-    const res = await loginAction(data);
+  async function onSubmit(data: z.infer<typeof resetPasswordSchema>) {
+    if (data.password !== data.confirmPassword) {
+      toast.add({
+        title: "Passwords do not match!",
+        description: "Please make sure your passwords match.",
+        type: "error",
+      });
+      return;
+    }
+
+    const res = await resetPasswordAction(data);
 
     if (res.serverError) {
       toast.add({
-        title: "Login failed!",
+        title: "Reset failed!",
         description:
-          res.serverError.message || "An error occurred during login.",
+          res.serverError.message ||
+          "An error occurred while resetting your password.",
         type: "error",
       });
       return;
     }
 
     toast.add({
-      title: "Logged in successfully!",
-      description: "Welcome back!",
+      title: "Password reset successfully!",
+      description: "You can now log in with your new password.",
       type: "success",
     });
 
-    form.reset();
-    router.refresh();
-    router.replace("/");
+    router.replace("/auth/login");
   }
 
   return (
@@ -71,31 +76,27 @@ export const LoginForm = ({
     >
       <Card>
         <CardHeader className="text-center">
-          <CardTitle className="text-xl">Log in</CardTitle>
-          <CardDescription>
-            Enter your email and password to log in to your account.
-          </CardDescription>
+          <CardTitle className="text-xl">Choose a new password</CardTitle>
+          <CardDescription>Enter your new password below.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form id="form-login" onSubmit={form.handleSubmit(onSubmit)}>
+          <form id="form-reset-password" onSubmit={form.handleSubmit(onSubmit)}>
             <FieldSet className="mb-5 w-full">
               <FieldGroup>
                 <Controller
-                  name="email"
+                  name="password"
                   control={form.control}
                   render={({ field, fieldState }) => (
                     <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="email">Email</FieldLabel>
+                      <FieldLabel htmlFor="password">New Password</FieldLabel>
                       <Input
                         {...field}
-                        id="email"
-                        type="email"
-                        placeholder="joe@example.com"
+                        id="password"
+                        type="password"
+                        placeholder="••••••••"
+                        autoComplete="new-password"
                         required
                       />
-                      <FieldDescription>
-                        Choose a unique email for your account.
-                      </FieldDescription>
 
                       {fieldState.invalid && (
                         <FieldError errors={[fieldState.error]} />
@@ -103,24 +104,22 @@ export const LoginForm = ({
                     </Field>
                   )}
                 />
-
                 <Controller
-                  name="password"
+                  name="confirmPassword"
                   control={form.control}
                   render={({ field, fieldState }) => (
                     <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="password">Password</FieldLabel>
+                      <FieldLabel htmlFor="confirmPassword">
+                        Confirm Password
+                      </FieldLabel>
                       <Input
                         {...field}
-                        id="password"
+                        id="confirmPassword"
                         type="password"
                         placeholder="••••••••"
-                        autoComplete="off"
+                        autoComplete="new-password"
                         required
                       />
-                      <FieldDescription>
-                        Must be at least 8 characters long.
-                      </FieldDescription>
 
                       {fieldState.invalid && (
                         <FieldError errors={[fieldState.error]} />
@@ -129,38 +128,19 @@ export const LoginForm = ({
                   )}
                 />
               </FieldGroup>
-              <div className="flex justify-end">
-                <Link
-                  href="/auth/forgot-password"
-                  className="text-muted-foreground text-sm hover:underline"
-                >
-                  Forgot password?
-                </Link>
-              </div>
             </FieldSet>
 
             <Field>
               <Button
                 type="submit"
-                form="form-login"
+                form="form-reset-password"
                 disabled={form.formState.isSubmitting}
               >
-                Log in
+                Reset password
               </Button>
 
               <FieldDescription className="text-center">
-                Don&apos;t have an account?{" "}
-                <Link href="/auth/signup">
-                  <Button
-                    variant="link"
-                    onClick={() => {
-                      form.reset();
-                    }}
-                    disabled={form.formState.isSubmitting}
-                  >
-                    Sign up
-                  </Button>
-                </Link>
+                Must be at least 8 characters long.
               </FieldDescription>
             </Field>
           </form>

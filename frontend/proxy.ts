@@ -30,8 +30,10 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  // Touch the session so tokens are refreshed and cookies written back.
-  await supabase.auth.getUser();
+  // Verify the session locally (JWKS, cached) instead of calling Supabase on
+  // every request. This still refreshes the token when it is close to expiry
+  // and writes the updated cookies back through `setAll` above.
+  await supabase.auth.getClaims();
 
   return response;
 }

@@ -26,15 +26,14 @@ import { resetPasswordAction } from "@/server/auth/auth.actions";
 import { resetPasswordSchema } from "@/server/auth/auth.schemas";
 
 export const ResetPasswordForm = ({
-  token,
   className,
   ...props
-}: React.ComponentProps<"div"> & { token: string }) => {
+}: React.ComponentProps<"div">) => {
   const router = useRouter();
 
   const form = useForm<z.infer<typeof resetPasswordSchema>>({
     resolver: zodResolver(resetPasswordSchema),
-    defaultValues: { token, password: "", confirmPassword: "" },
+    defaultValues: { password: "", confirmPassword: "" },
   });
 
   async function onSubmit(data: z.infer<typeof resetPasswordSchema>) {

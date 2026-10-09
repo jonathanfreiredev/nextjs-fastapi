@@ -35,7 +35,7 @@ jobs:
     env:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/app
       TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/app_test
-      AUTH_SECRET: ci-auth-secret-for-tests-only
+      SUPABASE_URL: https://test.supabase.co
 
     steps:
       - uses: actions/checkout@v4

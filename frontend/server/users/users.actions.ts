@@ -4,34 +4,45 @@ import { returnServerError } from "next-safe-action";
 
 import { env } from "@/lib/env";
 import { protectedProcedure } from "@/lib/safe-action";
+import { createClient } from "@/lib/supabase/server";
 import { updateUserPasswordSchema, updateUserSchema } from "./users.schemas";
-
-const EMAIL_TAKEN = "That email is already in use.";
 
 export const updateUserAction = protectedProcedure
   .inputSchema(updateUserSchema)
   .action(async ({ parsedInput, ctx }) => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    // Email lives in Supabase; changing it triggers a confirmation email.
+    if (user && parsedInput.email !== user.email) {
+      const { error } = await supabase.auth.updateUser({
+        email: parsedInput.email,
+      });
+
+      if (error) {
+        returnServerError({ code: error.status ?? 400, message: error.message });
+      }
+    }
+
+    // The name is domain data owned by the backend.
     const response = await fetch(`${env.BACKEND_URL}/users/me`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${ctx.session.token}`,
       },
-      body: JSON.stringify({
-        full_name: parsedInput.name,
-        email: parsedInput.email,
-      }),
+      body: JSON.stringify({ full_name: parsedInput.name }),
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const isEmailTaken = errorData.detail === "UPDATE_USER_EMAIL_ALREADY_EXISTS";
 
       returnServerError({
         code: response.status,
-        message: isEmailTaken
-          ? EMAIL_TAKEN
-          : errorData.detail || "An error occurred while updating user.",
+        message:
+          errorData.detail || "An error occurred while updating the profile.",
       });
     }
 
@@ -41,27 +52,25 @@ export const updateUserAction = protectedProcedure
 export const updateUserPasswordAction = protectedProcedure
   .inputSchema(updateUserPasswordSchema.omit({ confirmNewPassword: true }))
   .action(async ({ parsedInput, ctx }) => {
-    const response = await fetch(`${env.BACKEND_URL}/users/me/password/`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${ctx.session.token}`,
-      },
-      body: JSON.stringify({
-        old_password: parsedInput.currentPassword,
-        new_password: parsedInput.newPassword,
-      }),
+    const supabase = await createClient();
+
+    // Re-authenticate with the current password before changing it.
+    const { error: reauthError } = await supabase.auth.signInWithPassword({
+      email: ctx.user.email,
+      password: parsedInput.currentPassword,
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-
-      returnServerError({
-        code: response.status,
-        message:
-          errorData.detail || "An error occurred while updating user password.",
-      });
+    if (reauthError) {
+      returnServerError({ code: 400, message: "Incorrect current password." });
     }
 
-    return { success: true, user: await response.json() };
+    const { error } = await supabase.auth.updateUser({
+      password: parsedInput.newPassword,
+    });
+
+    if (error) {
+      returnServerError({ code: error.status ?? 400, message: error.message });
+    }
+
+    return { success: true };
   });

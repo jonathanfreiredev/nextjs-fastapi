@@ -1,11 +1,5 @@
 import { VerifyEmail } from "@/components/auth/verify-email";
 
-export default async function VerifyEmailPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ token?: string }>;
-}) {
-  const { token } = await searchParams;
-
-  return <VerifyEmail token={token ?? ""} />;
+export default function VerifyEmailPage() {
+  return <VerifyEmail />;
 }

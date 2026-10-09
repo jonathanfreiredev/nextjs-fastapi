@@ -1,17 +1,21 @@
-from sqlalchemy import Boolean
+import uuid
+
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models import BaseModel
 
 
 class User(BaseModel):
+    """The application's user profile.
+
+    Credentials, email verification and sessions live in Supabase Auth. This
+    table only stores domain data, linked to Supabase by ``supabase_user_id``
+    (the token's ``sub`` claim). Use ``id`` for your own relations.
+    """
+
     __tablename__ = "users"
 
-    email: Mapped[str] = mapped_column(unique=True, index=True)
+    supabase_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), unique=True, index=True)
+    email: Mapped[str | None] = mapped_column(unique=True, index=True, default=None)
     full_name: Mapped[str | None] = mapped_column(default=None)
-    hashed_password: Mapped[str]
-
-    # Expected by FastAPI Users' user protocol.
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
-    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -36,7 +36,8 @@ services:
     environment: &backend-env
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-nextjs-fastapi}
       ENV: development
-      AUTH_SECRET: ${AUTH_SECRET:-dev-auth-secret-change-me}
+      SUPABASE_URL: ${SUPABASE_URL:-https://your-project-ref.supabase.co}
+      SUPABASE_JWT_AUDIENCE: ${SUPABASE_JWT_AUDIENCE:-authenticated}
       FRONTEND_URL: http://localhost:3000
     depends_on:
       postgres:
@@ -55,8 +56,6 @@ services:
       - ./backend/alembic:/app/alembic
       - ./backend/alembic.ini:/app/alembic.ini
       - ./backend/pyproject.toml:/app/pyproject.toml
-      # JWT signing key (optional; an ephemeral one is generated if missing).
-      - ./backend/keys:/app/keys
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -69,6 +68,9 @@ services:
     command: ["pnpm", "dev"]
     environment:
       BACKEND_URL: http://backend:8000
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-https://your-project-ref.supabase.co}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-your-anon-key}
+      NEXT_PUBLIC_AUTH_PROVIDERS: ${NEXT_PUBLIC_AUTH_PROVIDERS:-email}
     volumes:
       # Mount the source, but keep the image's node_modules untouched.
       - ./frontend/app:/app/app

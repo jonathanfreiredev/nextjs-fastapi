@@ -10,6 +10,7 @@ from app.db.models import Base
 from app.db.session import get_async_db_session
 from app.main import app
 from app.settings import settings
+from tests.auth_stub import install_fake_jwks
 
 
 def _test_database_url() -> str:
@@ -27,23 +28,10 @@ def _test_database_url() -> str:
 TEST_DATABASE_URL = _test_database_url()
 
 
-@pytest.fixture
-def email_outbox(monkeypatch) -> dict[str, list[tuple[str, str]]]:
-    """Capture verification and reset emails instead of sending them."""
-    import app.auth.email as auth_email
-
-    outbox: dict[str, list[tuple[str, str]]] = {"verify": [], "reset": []}
-
-    async def fake_send_verification_email(user, token):
-        outbox["verify"].append((user.email, token))
-
-    async def fake_send_reset_password_email(user, token):
-        outbox["reset"].append((user.email, token))
-
-    monkeypatch.setattr(auth_email, "send_verification_email", fake_send_verification_email)
-    monkeypatch.setattr(auth_email, "send_reset_password_email", fake_send_reset_password_email)
-
-    return outbox
+@pytest.fixture(autouse=True)
+def fake_supabase_jwks(monkeypatch) -> None:
+    """Verify access tokens against a local key instead of Supabase."""
+    install_fake_jwks(monkeypatch)
 
 
 @pytest.fixture

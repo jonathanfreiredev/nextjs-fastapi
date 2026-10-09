@@ -1,8 +1,8 @@
 # Next.js + FastAPI Starter
 
-A full-stack starter template pairing a **Next.js 16** frontend with a **FastAPI** backend, wired together with a complete JWT authentication flow, server actions, and a PostgreSQL database.
+A full-stack starter template pairing a **Next.js 16** frontend with a **FastAPI** backend, wired together with a complete authentication flow, server actions, and a PostgreSQL database.
 
-The template ships with signup, login, email verification, password reset, profile editing and password change as working examples, so you can start building features on top of a real, end-to-end setup instead of a blank page. Authentication is powered by [**FastAPI Users**](https://fastapi-users.github.io/fastapi-users/).
+Authentication is delegated to [**Supabase Auth**](https://supabase.com/docs/guides/auth) (OAuth 2.1 / OIDC): it owns credentials, email verification, social login and sessions, while the FastAPI backend acts as a **resource server** that verifies the access token against Supabase's JWKS. The template ships with signup, login, email verification, password reset, profile editing and password change as working examples, so you can start building features on top of a real, end-to-end setup instead of a blank page.
 
 ## Tech stack
 
@@ -10,9 +10,9 @@ The template ships with signup, login, email verification, password reset, profi
 | ---------- | --------------------------------------------------------------------------------- |
 | Frontend   | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, shadcn/ui, Motion  |
 | Forms      | React Hook Form, Zod, next-safe-action                                             |
-| Backend    | FastAPI, SQLAlchemy 2 (async), Pydantic v2                                          |
+| Auth       | Supabase Auth (`@supabase/ssr`), asymmetric JWTs verified via JWKS                 |
+| Backend    | FastAPI, SQLAlchemy 2 (async), PyJWT, Pydantic v2                                   |
 | Database   | PostgreSQL, Alembic migrations                                                     |
-| Auth       | FastAPI Users, JWT (RS256) with a JWKS endpoint, Argon2 password hashing, HTTP-only cookies |
 
 ## Architecture
 
@@ -20,27 +20,28 @@ The template ships with signup, login, email verification, password reset, profi
 ┌──────────────────────────┐        ┌──────────────────────────┐        ┌──────────────┐
 │  Browser                 │        │  Next.js (server)        │        │  FastAPI     │
 │                          │        │                          │        │              │
-│  React components  ──────┼───────▶│  server actions  ────────┼───────▶│  routers     │
-│  (client)                │        │  (auth.actions, etc.)    │        │  services    │
-│                          │◀───────┼──  HTTP-only cookie      │◀───────┼──  JWT       │
-│  session via getSession  │        │  (access_token)          │        │  SQLAlchemy  │
-└──────────────────────────┘        └──────────────────────────┘        └──────┬───────┘
-                                                                              │
-                                                                       ┌──────▼───────┐
-                                                                       │  PostgreSQL  │
-                                                                       └──────────────┘
+│  React components  ──────┼───────▶│  server actions  ────────┼───────▶│  /users/me   │
+│  (client)                │        │  (@supabase/ssr)         │        │  verify JWT  │
+│                          │◀───────┼──  Supabase session      │◀───────┼──  JWKS      │
+│  session via getSession  │        │  cookies                 │        │  SQLAlchemy  │
+└──────────────────────────┘        └────────────┬─────────────┘        └──────┬───────┘
+                                                  │                             │
+                                       ┌──────────▼──────────┐         ┌────────▼────────┐
+                                       │  Supabase Auth       │         │  PostgreSQL     │
+                                       │  (credentials, JWT)  │         │  (your data)    │
+                                       └──────────────────────┘         └─────────────────┘
 ```
 
-The browser never talks to FastAPI directly. Server-side actions in `frontend/server/` call the backend, store the JWT in an HTTP-only cookie, and the Next.js server reads it back to build the session.
+The browser authenticates against Supabase through Next.js server actions; the session is a cookie managed by `@supabase/ssr`. The browser never talks to FastAPI directly: the Next.js server calls it with the Supabase access token, and the backend verifies that token against Supabase's JWKS before touching the database.
 
 ## Repository structure
 
 ```
 .
-├── backend/                 # FastAPI application
+├── backend/                 # FastAPI application (resource server)
 │   ├── app/
-│   │   ├── auth/            # FastAPI Users glue: manager, JWT strategy, routers
-│   │   ├── users/           # User model + /users router
+│   │   ├── auth/            # JWT verification + bearer dependency
+│   │   ├── users/           # Profile model, schemas, JIT provisioning, /users router
 │   │   ├── db/              # Async engine, session, base model
 │   │   ├── settings.py      # Pydantic settings (reads .env)
 │   │   └── main.py          # App entrypoint + CORS
@@ -51,10 +52,11 @@ The browser never talks to FastAPI directly. Server-side actions in `frontend/se
 │   └── pyproject.toml       # Dependencies (managed with uv)
 │
 ├── frontend/                # Next.js application
-│   ├── app/                 # App Router pages, layouts, API routes
+│   ├── app/                 # App Router pages, layouts, confirm route handler
 │   ├── components/          # UI + auth components (shadcn/ui based)
-│   ├── server/              # Server actions, schemas, session helpers
-│   ├── lib/                 # Env validation, safe-action client, utils
+│   ├── server/              # Server actions, schemas, session helper
+│   ├── lib/                 # Env validation, Supabase client, safe-action, providers
+│   ├── proxy.ts             # Refreshes the Supabase session per request
 │   ├── Dockerfile           # Dev image
 │   └── package.json         # Dependencies (managed with pnpm)
 │
@@ -68,10 +70,15 @@ The browser never talks to FastAPI directly. Server-side actions in `frontend/se
 - **Node.js** 20+ and **pnpm**
 - **Python** 3.14+ and [**uv**](https://docs.astral.sh/uv/)
 - **Docker** or **Podman** if you want the containerized stack (or a local database via `start-database.sh`)
+- A **Supabase project** (free tier is enough)
 
 ## Getting started
 
-### 1. Backend
+### 1. Supabase
+
+Create a project and configure auth (enable Email and, optionally, Google; set the Site URL and redirect URLs to `/auth/confirm`). Copy the project URL and anon key — you will paste them into the frontend env. The full walkthrough is in [`frontend/README.md`](./frontend/README.md#supabase-setup).
+
+### 2. Backend
 
 ```bash
 cd backend
@@ -79,10 +86,7 @@ cd backend
 # Install dependencies
 uv sync
 
-# Generate the RSA key pair used to sign JWTs
-uv run python scripts/generate_keys.py
-
-# Create your environment file
+# Create your environment file and set SUPABASE_URL
 cp .env.example .env
 
 # Start a local PostgreSQL container (reads DATABASE_URL from .env)
@@ -97,7 +101,7 @@ uv run fastapi dev
 
 Interactive API docs are available at http://localhost:8000/docs.
 
-### 2. Frontend
+### 3. Frontend
 
 ```bash
 cd frontend
@@ -105,14 +109,14 @@ cd frontend
 # Install dependencies
 pnpm install
 
-# Create your environment file
+# Create your environment file and set the Supabase URL / anon key
 cp .env.example .env
 
 # Run the dev server on http://localhost:3000
 pnpm dev
 ```
 
-Open http://localhost:3000 and sign up. You will receive a verification email (printed to the backend logs in development) — verify it, then log in.
+Open http://localhost:3000 and sign up. Supabase sends a verification email (check its logs while developing) — open the link, then log in.
 
 ## Run with Docker
 
@@ -122,7 +126,7 @@ Open http://localhost:3000 and sign up. You will receive a verification email (p
 docker compose up
 ```
 
-A one-shot `migrate` service runs `alembic upgrade head` before the API starts, so the schema is always up to date.
+A one-shot `migrate` service runs `alembic upgrade head` before the API starts, so the schema is always up to date. Supabase runs in the cloud, so pass your project values through the root environment (e.g. `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`).
 
 Deployment is not handled here: the frontend goes to Vercel (which builds it natively) and the backend to its own service. The `backend/Dockerfile` also has a production stage if you deploy it as a container.
 
@@ -130,49 +134,45 @@ Deployment is not handled here: the frontend goes to Vercel (which builds it nat
 
 ### `backend/.env`
 
-| Variable          | Required | Description                                                                 |
-| ----------------- | -------- | --------------------------------------------------------------------------- |
-| `DATABASE_URL`    | Yes      | Async PostgreSQL URL, e.g. `postgresql+asyncpg://postgres:password@localhost:5432/app`. |
-| `AUTH_SECRET`     | Yes      | Symmetric secret for the email-verification and password-reset tokens.      |
-| `ENV`             | No       | `development` (default) or `production`. Enables SQL echo when in development. |
-| `FRONTEND_URL`    | No       | Base URL of the frontend, used to build the links sent by email.            |
-| `JWT_PRIVATE_KEY` | No       | PEM contents of the RSA signing key. Unset in development: `keys/private.pem` is used, or an ephemeral key is generated. |
+| Variable                | Required | Description                                                                 |
+| ----------------------- | -------- | --------------------------------------------------------------------------- |
+| `DATABASE_URL`          | Yes      | Async PostgreSQL URL, e.g. `postgresql+asyncpg://postgres:password@localhost:5432/app`. |
+| `SUPABASE_URL`          | Yes      | Supabase project URL. Used to derive the issuer and the JWKS endpoint.       |
+| `SUPABASE_JWT_AUDIENCE` | No       | Audience claim on access tokens (default `authenticated`).                   |
+| `ENV`                   | No       | `development` (default) or `production`. Enables SQL echo when in development. |
+| `FRONTEND_URL`          | No       | Base URL of the frontend, used for redirects.                                |
 
 ### `frontend/.env`
 
-| Variable      | Required | Description                                            |
-| ------------- | -------- | ------------------------------------------------------ |
-| `BACKEND_URL` | Yes      | Base URL of the FastAPI backend, e.g. `http://localhost:8000`. |
-| `NODE_ENV`    | No       | Set automatically by Next.js.                          |
+| Variable                        | Required | Description                                             |
+| ------------------------------- | -------- | ------------------------------------------------------- |
+| `BACKEND_URL`                   | Yes      | Base URL of the FastAPI backend, e.g. `http://localhost:8000`. |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Yes      | Supabase project URL.                                   |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes      | Supabase anon (publishable) key.                        |
+| `NEXT_PUBLIC_AUTH_PROVIDERS`    | No       | Enabled login methods (`email,google`). Default `email`. |
+| `NODE_ENV`                      | No       | Set automatically by Next.js.                           |
 
 Environment variables in the frontend are validated at startup with `@t3-oss/env-nextjs` (`lib/env.js`).
 
 ## API reference
 
-All endpoints live on the FastAPI backend. Protected routes expect an `Authorization: Bearer <access_token>` header.
+All endpoints live on the FastAPI backend. Protected routes expect an `Authorization: Bearer <supabase_access_token>` header.
 
-| Method | Path                          | Auth | Description                          |
-| ------ | ----------------------------- | :--: | ------------------------------------ |
-| POST   | `/auth/register`              |  –   | Create an account (unverified) and email a verification link |
-| POST   | `/auth/jwt/login`             |  –   | Log in (form-encoded) and return an access token |
-| POST   | `/auth/request-verify-token`  |  –   | (Re)send the email-verification link |
-| POST   | `/auth/verify`                |  –   | Verify an email                         |
-| POST   | `/auth/forgot-password`       |  –   | Request a password-reset email       |
-| POST   | `/auth/reset-password`        |  –   | Set a new password with the reset token |
-| GET    | `/users/me`                   |  ✓   | Return the current user              |
-| PATCH  | `/users/me`                   |  ✓   | Update name / email                  |
-| PUT    | `/users/me/password/`         |  ✓   | Change password                      |
+| Method | Path        | Auth | Description                                               |
+| ------ | ----------- | :--: | --------------------------------------------------------- |
+| GET    | `/users/me` |  ✓   | Return the current profile (provisions it on first use)   |
+| PATCH  | `/users/me` |  ✓   | Update the profile name                                   |
 
-The access token is a long-lived JWT (24 hours) signed with RS256; there are no refresh tokens, so a token stays valid until it expires.
+Authentication (signup, login, verification, reset) is handled by **Supabase Auth**, not this API.
 
 ## Authentication flow
 
-1. The user signs up or logs in through a **server action**.
-2. The action calls the backend. On login, it stores the returned **access token** in a single HTTP-only cookie (`access_token`, 24h JWT).
-3. `getSession()` (`frontend/server/auth/auth.lib.ts`) **verifies** the access token's RS256 signature and expiry using the public keys from the backend's `/.well-known/jwks.json`, then fetches `/users/me` for the profile. The frontend never holds the signing key.
-4. There are no refresh tokens: when the token expires, the user logs in again.
-5. Protected server actions use `protectedProcedure`, which rejects the request when there is no valid session and forwards the access token to the backend.
-6. Registration, email verification and password reset are handled by FastAPI Users; the verification and reset links point to pages in `frontend/app/auth/`.
+1. The user signs up or logs in through a **server action**, which calls **Supabase Auth** (`@supabase/ssr`). The session is stored in cookies managed by the Next.js server.
+2. `proxy.ts` refreshes the session on every request (Next.js 16 renamed `middleware` to `proxy`).
+3. `getSession()` (`frontend/server/auth/auth.lib.ts`) validates the user with Supabase and fetches the profile from the backend, returning the session and user.
+4. Protected server actions use `protectedProcedure`, which rejects the request when there is no valid session and forwards the Supabase access token to the backend.
+5. The backend **verifies** the token against Supabase's **JWKS** (`iss`, `aud`, `exp`) and **provisions a local profile** keyed by the token's `sub` the first time it sees the user.
+6. Supabase sends verification and password-reset emails; `frontend/app/auth/confirm/route.ts` handles the links and the OAuth callback.
 
 ## Common commands
 

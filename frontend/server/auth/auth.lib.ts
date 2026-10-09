@@ -1,13 +1,12 @@
 import { cache } from "react";
-import { cookies } from "next/headers";
-import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import { env } from "@/lib/env";
+import { createClient } from "@/lib/supabase/server";
 
 export type Session = {
   session: {
     token: string;
-    expiresAt: string;
+    expiresAt: string | null;
   };
   user: {
     id: string;
@@ -17,50 +16,45 @@ export type Session = {
   };
 };
 
-// Public keys fetched from the backend's JWKS endpoint and cached by jose. The
-// frontend verifies the RS256 signature with the public key only; it never holds
-// the signing key.
-const jwks = createRemoteJWKSet(new URL("/.well-known/jwks.json", env.BACKEND_URL));
-
+/**
+ * Resolve the current session. The Supabase client validates the access token
+ * (and refreshes it if needed); the domain profile is fetched from the backend,
+ * which provisions it on first use.
+ */
 export const getSession = cache(async (): Promise<Session | null> => {
-  const cookieStore = await cookies();
-  const accessToken = cookieStore.get("access_token")?.value;
+  const supabase = await createClient();
 
-  if (!accessToken) {
+  const { data: userData, error } = await supabase.auth.getUser();
+  if (error || !userData.user) {
     return null;
   }
 
-  let expiresAt: string;
-  try {
-    const { payload } = await jwtVerify(accessToken, jwks, {
-      algorithms: ["RS256"],
-      audience: "fastapi-users:auth",
+  const user = userData.user;
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token ?? "";
+  const expiresAt = sessionData.session?.expires_at
+    ? new Date(sessionData.session.expires_at * 1000).toISOString()
+    : null;
+
+  let name = (user.user_metadata?.full_name as string | undefined) ?? "";
+  if (token) {
+    const response = await fetch(`${env.BACKEND_URL}/users/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
     });
-    expiresAt = new Date((payload.exp as number) * 1000).toISOString();
-  } catch {
-    // Malformed, tampered or expired token.
-    return null;
+    if (response.ok) {
+      const profile = await response.json();
+      name = profile.full_name ?? name;
+    }
   }
-
-  // The token only carries the user id, so the profile is fetched from the API.
-  const response = await fetch(`${env.BACKEND_URL}/users/me`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const user = await response.json();
 
   return {
-    session: { token: accessToken, expiresAt },
+    session: { token, expiresAt },
     user: {
       id: user.id,
-      email: user.email,
-      name: user.full_name ?? "",
-      isVerified: user.is_verified,
+      email: user.email ?? "",
+      name,
+      isVerified: Boolean(user.email_confirmed_at || user.confirmed_at),
     },
   };
 });

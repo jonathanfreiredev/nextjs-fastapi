@@ -1,18 +1,16 @@
 # Backend — FastAPI
 
-The API for the [Next.js + FastAPI Starter](../README.md). It handles user accounts, authentication, and profile management on top of an async SQLAlchemy / PostgreSQL stack.
+The API for the [Next.js + FastAPI Starter](../README.md). It exposes the application's domain data (the user profile) on top of an async SQLAlchemy / PostgreSQL stack.
 
-Authentication is built on [**FastAPI Users**](https://fastapi-users.github.io/fastapi-users/), which provides registration, login, email verification and password reset out of the box (OAuth providers are a planned addition).
+Authentication is delegated to [**Supabase Auth**](https://supabase.com/docs/guides/auth), which owns credentials, email verification, social login and sessions. This service is a **resource server**: it verifies the Supabase access token (an asymmetric JWT) against the project's **JWKS** and provisions a local profile the first time it sees a user. It never issues tokens or stores passwords.
 
 ## Tech stack
 
 - **FastAPI** — HTTP layer
-- **FastAPI Users** (SQLAlchemy adapter) — registration, login, email verification, password reset
 - **SQLAlchemy 2.0** (async) with **asyncpg** — ORM and driver
 - **Alembic** — database migrations
 - **Pydantic v2 / pydantic-settings** — schemas and configuration
-- **PyJWT** (RS256) with **cryptography** — signing access tokens
-- **pwdlib** (Argon2 + bcrypt, via FastAPI Users) — password hashing
+- **PyJWT** with **cryptography** — verifying Supabase access tokens (RS256/ES256)
 - **uv** — dependency management
 - **ruff** — linting and formatting
 
@@ -22,24 +20,20 @@ Authentication is built on [**FastAPI Users**](https://fastapi-users.github.io/f
 backend/
 ├── app/
 │   ├── auth/
-│   │   ├── backend.py         # JWT strategy (RS256 + kid), transport, FastAPIUsers
-│   │   ├── constants.py       # Algorithm and token lifetimes
-│   │   ├── email.py           # Email sender (console in development)
-│   │   ├── keys.py            # RSA key loading, JWKS and key id
-│   │   ├── router.py          # /auth endpoints (login, register, verify, reset)
-│   │   ├── schemas.py         # UserRead / UserCreate / UserUpdate
-│   │   └── users.py           # UserManager + SQLAlchemy user adapter
+│   │   ├── verifier.py        # Verify a Supabase JWT against the project's JWKS
+│   │   └── dependencies.py    # Bearer token -> TokenClaims
 │   ├── users/
-│   │   ├── models.py          # User ORM model
-│   │   └── router.py          # /users endpoints (me, change password)
+│   │   ├── models.py          # User (profile) ORM model
+│   │   ├── schemas.py         # UserRead / UserUpdate
+│   │   ├── service.py         # Just-in-time profile provisioning
+│   │   ├── dependencies.py    # TokenClaims -> local User
+│   │   └── router.py          # /users endpoints (me)
 │   ├── db/
 │   │   ├── session.py         # Async engine + session factory
 │   │   └── models.py          # Declarative Base and BaseModel (id, timestamps)
 │   ├── settings.py            # Settings loaded from .env
-│   └── main.py                # FastAPI app, routers, JWKS endpoint, CORS
+│   └── main.py                # FastAPI app, routers, CORS
 ├── alembic/                   # Migrations (async env.py)
-├── scripts/
-│   └── generate_keys.py       # Generate the RSA key pair
 ├── alembic.ini
 ├── start-database.sh          # Starts a local PostgreSQL container
 ├── pyproject.toml
@@ -51,6 +45,7 @@ backend/
 - Python **3.14+**
 - [uv](https://docs.astral.sh/uv/)
 - Docker or Podman (for the local database), or a PostgreSQL server you can point `DATABASE_URL` at
+- A **Supabase project** (see the [frontend README](../frontend/README.md) for the auth setup)
 
 ## Setup
 
@@ -59,9 +54,6 @@ cd backend
 
 # Install dependencies into .venv
 uv sync
-
-# Generate the RSA key pair used to sign JWTs (writes keys/, gitignored)
-uv run python scripts/generate_keys.py
 
 # Create your environment file
 cp .env.example .env
@@ -83,19 +75,20 @@ Create `backend/.env`:
 # DATABASE
 DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/app
 
-# Symmetric secret for email-verification and password-reset tokens
-AUTH_SECRET=change-me
+# Supabase project URL (the issuer and JWKS are derived from it)
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_JWT_AUDIENCE=authenticated
 ```
 
-| Variable          | Required | Default                 | Description                                                        |
-| ----------------- | -------- | ----------------------- | ------------------------------------------------------------------ |
-| `DATABASE_URL`    | Yes      | –                       | Async connection string. Must use the `postgresql+asyncpg://` driver. |
-| `AUTH_SECRET`     | Yes      | –                       | Symmetric secret for the email-verification and password-reset tokens. Generate with `openssl rand -hex 32`. |
-| `ENV`             | No       | `development`           | `development` enables SQL echo; anything else disables debug mode.  |
-| `FRONTEND_URL`    | No       | `http://localhost:3000` | Base URL of the frontend, used to build the links sent by email.    |
-| `JWT_PRIVATE_KEY` | No       | –                       | PEM contents of the RSA private key. When unset in development, `keys/private.pem` is used, or an ephemeral key is generated if missing. |
+| Variable                | Required | Default                 | Description                                                          |
+| ----------------------- | -------- | ----------------------- | -------------------------------------------------------------------- |
+| `DATABASE_URL`          | Yes      | –                       | Async connection string. Must use the `postgresql+asyncpg://` driver. |
+| `SUPABASE_URL`          | Yes      | –                       | Supabase project URL. The issuer (`<url>/auth/v1`) and JWKS (`<url>/auth/v1/.well-known/jwks.json`) are derived from it. |
+| `SUPABASE_JWT_AUDIENCE` | No       | `authenticated`         | Audience claim the access tokens carry.                              |
+| `ENV`                   | No       | `development`           | `development` enables SQL echo.                                      |
+| `FRONTEND_URL`          | No       | `http://localhost:3000` | Base URL of the frontend, used for redirects and documentation.      |
 
-Settings are defined in `app/settings.py` and loaded from `backend/.env`. In production, set `JWT_PRIVATE_KEY` and `AUTH_SECRET` from your secret store instead of shipping them in files.
+Settings are defined in `app/settings.py` and loaded from `backend/.env`.
 
 ## Running the server
 
@@ -128,8 +121,8 @@ uv run ruff format .
 
 The suite has two layers, split by directory:
 
-- **Integration tests** (`tests/integration/`) exercise the API **through its HTTP interface**: routing, validation, dependencies and a real PostgreSQL database, using `httpx`'s ASGI transport. They cover the whole auth surface (register, login, email verification, password reset, profile updates and password change). No server needs to be running. They are not full end-to-end tests — the network is in-process and there is no frontend or browser.
-- **Unit tests** (`tests/unit/`) cover a single function in isolation, with no database.
+- **Integration tests** (`tests/integration/`) exercise the API **through its HTTP interface** against a real PostgreSQL database, using `httpx`'s ASGI transport. They forge Supabase-style access tokens with a local RSA key (`tests/auth_stub.py`), so no Supabase project is needed and the real signature, issuer, audience and expiry checks still run.
+- **Unit tests** (`tests/unit/`) cover single functions in isolation, with no database (token verification edge cases).
 
 Run everything:
 
@@ -174,81 +167,31 @@ When you add a new model, import it in `alembic/env.py` so it is included in aut
 
 ## API reference
 
-Protected endpoints require an `Authorization: Bearer <access_token>` header.
+Protected endpoints require an `Authorization: Bearer <supabase_access_token>` header.
 
-| Method | Path                          | Auth | Description                                    |
-| ------ | ----------------------------- | :--: | ---------------------------------------------- |
-| POST   | `/auth/register`              |  –   | Create an account (unverified) and email a verification link |
-| POST   | `/auth/jwt/login`             |  –   | Log in (form-encoded) and return an access token |
-| POST   | `/auth/jwt/logout`            |  ✓   | Log out (no-op for JWT; the client drops the token) |
-| POST   | `/auth/request-verify-token`  |  –   | (Re)send the email-verification link           |
-| POST   | `/auth/verify`                |  –   | Verify an email with the token from the link   |
-| POST   | `/auth/forgot-password`       |  –   | Request a password-reset email                 |
-| POST   | `/auth/reset-password`        |  –   | Set a new password with the reset token        |
-| GET    | `/.well-known/jwks.json`      |  –   | Public keys used to verify access tokens       |
-| GET    | `/users/me`                   |  ✓   | Return the current user                        |
-| PATCH  | `/users/me`                   |  ✓   | Update name / email                            |
-| PUT    | `/users/me/password/`         |  ✓   | Change the password (requires the current one) |
+| Method | Path         | Auth | Description                                          |
+| ------ | ------------ | :--: | ---------------------------------------------------- |
+| GET    | `/users/me`  |  ✓   | Return the current profile (provisions it on first use) |
+| PATCH  | `/users/me`  |  ✓   | Update the profile name                              |
 
 ### Request / response examples
 
-**POST `/auth/register`**
+**PATCH `/users/me`** — the name is domain data owned by this service; the email lives in Supabase and is changed from the client.
 
 ```json
-{ "email": "jane@example.com", "password": "supersecret", "full_name": "Jane Doe" }
-```
-
-Responds `201` with the created user (`is_verified: false`) and sends a verification email.
-
-**POST `/auth/jwt/login`** — `application/x-www-form-urlencoded`
-
-```
-username=jane@example.com&password=supersecret
-```
-
-Response:
-
-```json
-{ "access_token": "<jwt>", "token_type": "bearer" }
-```
-
-**POST `/auth/verify`**
-
-```json
-{ "token": "<token from the verification link>" }
-```
-
-**POST `/auth/forgot-password`** → `{ "email": "jane@example.com" }`, then **POST `/auth/reset-password`**
-
-```json
-{ "token": "<token from the reset link>", "password": "newsecret123" }
-```
-
-**PATCH `/users/me`**
-
-```json
-{ "full_name": "Jane Smith", "email": "jane.smith@example.com" }
-```
-
-**PUT `/users/me/password/`**
-
-```json
-{ "old_password": "supersecret", "new_password": "evensecreter" }
+{ "full_name": "Jane Smith" }
 ```
 
 ## Authentication notes
 
-- **FastAPI Users** owns the user lifecycle: registration, email verification, password reset and the user CRUD routes. The glue lives in `app/auth/` (`users.py`, `backend.py`, `router.py`).
-- Access tokens are **RS256** JWTs (asymmetric), valid for `ACCESS_TOKEN_LIFETIME_SECONDS` (24 hours, in `app/auth/constants.py`). The payload carries `sub` (the user **id**), `aud` (`fastapi-users:auth`) and `exp`; the header carries a `kid`. The private key lives **only in the backend**; the public key is served at `/.well-known/jwks.json` so the frontend can verify tokens without being able to sign them.
-- The RSA key pair is loaded in `app/auth/keys.py`: from `JWT_PRIVATE_KEY`, else `keys/private.pem`, else an ephemeral key in development. Generate a stable pair with `uv run python scripts/generate_keys.py`.
-- **There are no refresh tokens.** A JWT is valid until it expires and cannot be invalidated server-side, so "log out" simply means the client discards the token. This is FastAPI Users' JWT model; if you need instant revocation later, switch to its Database or Redis strategy.
-- Email verification and password reset use short-lived JWTs signed with `AUTH_SECRET` (24 hours for verification, 1 hour for reset). Changing the email resets `is_verified` to `false`.
-- The development email sender (`app/auth/email.py`) writes the link to the logs. Replace `send_email` with a real provider (Resend, SES, SMTP...) in production.
-- `current_active_user` / `current_verified_user` (`app/auth/backend.py`) are the dependencies that resolve a bearer token to a user; the former rejects inactive accounts, the latter also requires a verified email.
+- **Supabase Auth owns the user lifecycle**: signup, email verification, password reset, social login and sessions. This service stores no passwords and issues no tokens.
+- Access tokens are **asymmetric JWTs** (RS256 by default, ES256 also accepted). `app/auth/verifier.py` validates the signature against the project's **JWKS**, plus the `iss`, `aud` and `exp` claims, so tokens from another project — or expired ones — are rejected.
+- **Just-in-time provisioning**: the first time a valid token is seen, `app/users/service.py` creates the local profile keyed by `supabase_user_id` (the token's `sub`, a stable UUID). Later requests keep the mirrored email in sync. The profile's own `id` is what you should use for relations.
+- `app/auth/dependencies.py` resolves the bearer token into `TokenClaims`; `app/users/dependencies.py` resolves those claims into a local `User`. Inactive or unverified checks are handled by Supabase at authentication time, not here.
 
 ## Conventions
 
-- Imports are **absolute** and rooted at the `app` package (`from app.auth.users import ...`). Avoid relative imports so the dependency direction stays easy to read.
+- Imports are **absolute** and rooted at the `app` package (`from app.users.service import ...`). Avoid relative imports so the dependency direction stays easy to read.
 - Every directory is a regular package with an empty `__init__.py`. Nothing is re-exported there on purpose, so import cycles remain visible instead of being hidden behind package-level imports.
 - The `app` package is imported from the working directory (`backend/`). Run the CLI commands from `backend/` so `app` is on `sys.path`.
 
@@ -259,5 +202,4 @@ Allowed origins are configured in `app/main.py`. The default list includes `http
 ## Notes
 
 - `app/db/models.py` defines a shared `BaseModel` with a UUID primary key plus `created_at`, `updated_at`, and `deleted_at` columns for every table.
-- The `User` model adds `full_name` and the fields FastAPI Users expects: `is_active`, `is_superuser`, `is_verified`.
-- Passwords are hashed with Argon2 via FastAPI Users' `PasswordHelper`.
+- The `User` model is a **profile**: `supabase_user_id` (unique, links to Supabase), `email`, `full_name`. Add your own fields and relations on top of `id`.

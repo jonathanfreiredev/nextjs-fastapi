@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "@/components/ui/toast";
 import { z } from "zod";
+import { isProviderEnabled } from "@/lib/auth-providers";
 import { cn } from "@/lib/utils";
 import { Button } from "../ui/button";
 import {
@@ -25,12 +26,15 @@ import { Input } from "../ui/input";
 import Link from "next/link";
 import { signupFormSchema } from "@/server/auth/auth.schemas";
 import { signupAction } from "@/server/auth/auth.actions";
+import { GoogleSignInButton } from "./google-sign-in-button";
 
 export function SignupForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
   const router = useRouter();
+  const emailEnabled = isProviderEnabled("email");
+  const googleEnabled = isProviderEnabled("google");
 
   const form = useForm({
     resolver: zodResolver(signupFormSchema),
@@ -68,7 +72,7 @@ export function SignupForm({
 
     toast.add({
       title: "Account created successfully!",
-      description: "Check your email to verify your account, then log in.",
+      description: "Check your email to verify your account.",
       type: "success",
     });
 
@@ -85,136 +89,144 @@ export function SignupForm({
         <CardHeader className="text-center">
           <CardTitle className="text-xl">Create your account</CardTitle>
           <CardDescription>
-            Enter your email below to create your account
+            {emailEnabled
+              ? "Enter your email below to create your account"
+              : "Continue with one of the options below."}
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <form id="form-signup" onSubmit={form.handleSubmit(onSubmit)}>
-            <FieldSet className="mb-5 w-full">
-              <FieldGroup>
-                <Controller
-                  name="name"
-                  control={form.control}
-                  render={({ field, fieldState }) => (
-                    <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="name">Name</FieldLabel>
-                      <Input
-                        {...field}
-                        id="name"
-                        type="text"
-                        autoComplete="off"
-                        placeholder="John Doe"
-                        required
+        <CardContent className="flex flex-col gap-5">
+          {emailEnabled ? (
+            <form id="form-signup" onSubmit={form.handleSubmit(onSubmit)}>
+              <FieldSet className="mb-5 w-full">
+                <FieldGroup>
+                  <Controller
+                    name="name"
+                    control={form.control}
+                    render={({ field, fieldState }) => (
+                      <Field data-invalid={fieldState.invalid}>
+                        <FieldLabel htmlFor="name">Name</FieldLabel>
+                        <Input
+                          {...field}
+                          id="name"
+                          type="text"
+                          autoComplete="off"
+                          placeholder="John Doe"
+                          required
+                        />
+
+                        {fieldState.invalid && (
+                          <FieldError errors={[fieldState.error]} />
+                        )}
+                      </Field>
+                    )}
+                  />
+                  <Controller
+                    name="email"
+                    control={form.control}
+                    render={({ field, fieldState }) => (
+                      <Field data-invalid={fieldState.invalid}>
+                        <FieldLabel htmlFor="email">Email</FieldLabel>
+                        <Input
+                          {...field}
+                          id="email"
+                          type="email"
+                          autoComplete="off"
+                          placeholder="joe@example.com"
+                          required
+                        />
+                        <FieldDescription>
+                          Choose a unique email for your account.
+                        </FieldDescription>
+
+                        {fieldState.invalid && (
+                          <FieldError errors={[fieldState.error]} />
+                        )}
+                      </Field>
+                    )}
+                  />
+                  <Field>
+                    <Field className="grid grid-cols-2 gap-4">
+                      <Controller
+                        name="password"
+                        control={form.control}
+                        render={({ field, fieldState }) => (
+                          <Field data-invalid={fieldState.invalid}>
+                            <FieldLabel htmlFor="password">Password</FieldLabel>
+                            <Input
+                              {...field}
+                              id="password"
+                              type="password"
+                              placeholder="••••••••"
+                              autoComplete="off"
+                              required
+                            />
+
+                            {fieldState.invalid && (
+                              <FieldError errors={[fieldState.error]} />
+                            )}
+                          </Field>
+                        )}
                       />
+                      <Controller
+                        name="confirmPassword"
+                        control={form.control}
+                        render={({ field, fieldState }) => (
+                          <Field data-invalid={fieldState.invalid}>
+                            <FieldLabel htmlFor="confirmPassword">
+                              Confirm Password
+                            </FieldLabel>
+                            <Input
+                              {...field}
+                              id="confirmPassword"
+                              type="password"
+                              placeholder="••••••••"
+                              autoComplete="off"
+                              required
+                            />
 
-                      {fieldState.invalid && (
-                        <FieldError errors={[fieldState.error]} />
-                      )}
-                    </Field>
-                  )}
-                />
-                <Controller
-                  name="email"
-                  control={form.control}
-                  render={({ field, fieldState }) => (
-                    <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="email">Email</FieldLabel>
-                      <Input
-                        {...field}
-                        id="email"
-                        type="email"
-                        autoComplete="off"
-                        placeholder="joe@example.com"
-                        required
+                            {fieldState.invalid && (
+                              <FieldError errors={[fieldState.error]} />
+                            )}
+                          </Field>
+                        )}
                       />
-                      <FieldDescription>
-                        Choose a unique email for your account.
-                      </FieldDescription>
-
-                      {fieldState.invalid && (
-                        <FieldError errors={[fieldState.error]} />
-                      )}
                     </Field>
-                  )}
-                />
-                <Field>
-                  <Field className="grid grid-cols-2 gap-4">
-                    <Controller
-                      name="password"
-                      control={form.control}
-                      render={({ field, fieldState }) => (
-                        <Field data-invalid={fieldState.invalid}>
-                          <FieldLabel htmlFor="password">Password</FieldLabel>
-                          <Input
-                            {...field}
-                            id="password"
-                            type="password"
-                            placeholder="••••••••"
-                            autoComplete="off"
-                            required
-                          />
-
-                          {fieldState.invalid && (
-                            <FieldError errors={[fieldState.error]} />
-                          )}
-                        </Field>
-                      )}
-                    />
-                    <Controller
-                      name="confirmPassword"
-                      control={form.control}
-                      render={({ field, fieldState }) => (
-                        <Field data-invalid={fieldState.invalid}>
-                          <FieldLabel htmlFor="confirmPassword">
-                            Confirm Password
-                          </FieldLabel>
-                          <Input
-                            {...field}
-                            id="confirmPassword"
-                            type="password"
-                            placeholder="••••••••"
-                            autoComplete="off"
-                            required
-                          />
-
-                          {fieldState.invalid && (
-                            <FieldError errors={[fieldState.error]} />
-                          )}
-                        </Field>
-                      )}
-                    />
+                    <FieldDescription>
+                      Must be at least 8 characters long.
+                    </FieldDescription>
                   </Field>
-                  <FieldDescription>
-                    Must be at least 8 characters long.
-                  </FieldDescription>
-                </Field>
-                <Field>
-                  <Button
-                    type="submit"
-                    form="form-signup"
-                    disabled={form.formState.isSubmitting}
-                  >
-                    Create Account
-                  </Button>
+                  <Field>
+                    <Button
+                      type="submit"
+                      form="form-signup"
+                      disabled={form.formState.isSubmitting}
+                    >
+                      Create Account
+                    </Button>
+                  </Field>
+                </FieldGroup>
+              </FieldSet>
+            </form>
+          ) : null}
 
-                  <FieldDescription className="text-center">
-                    Already have an account?{" "}
-                    <Link href="/auth/login">
-                      <Button
-                        variant="link"
-                        onClick={() => {
-                          form.reset();
-                        }}
-                        disabled={form.formState.isSubmitting}
-                      >
-                        Log in
-                      </Button>
-                    </Link>
-                  </FieldDescription>
-                </Field>
-              </FieldGroup>
-            </FieldSet>
-          </form>
+          {googleEnabled ? (
+            <GoogleSignInButton className="w-full" />
+          ) : null}
+
+          <FieldDescription className="text-center">
+            Already have an account?{" "}
+            <Link href="/auth/login">
+              <Button
+                variant="link"
+                onClick={() => {
+                  form.reset();
+                }}
+                disabled={form.formState.isSubmitting}
+              >
+                Log in
+              </Button>
+            </Link>
+          </FieldDescription>
         </CardContent>
       </Card>
     </div>

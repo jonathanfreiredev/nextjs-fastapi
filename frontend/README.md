@@ -1,6 +1,6 @@
 # Frontend — Next.js
 
-The web client for the [Next.js + FastAPI Starter](../README.md). It renders the UI, validates forms, and talks to the FastAPI backend through server actions — the browser never sees the JWT directly.
+The web client for the [Next.js + FastAPI Starter](../README.md). It renders the UI, validates forms, and authenticates users with **Supabase Auth** through `@supabase/ssr`. The session lives in cookies managed by the Next.js server; domain data is read from the FastAPI backend.
 
 ## Tech stack
 
@@ -9,8 +9,9 @@ The web client for the [Next.js + FastAPI Starter](../README.md). It renders the
 - **Tailwind CSS 4** with **shadcn/ui** components (base-nova style, Lucide icons)
 - **React Hook Form** + **Zod** for forms and validation
 - **next-safe-action** for type-safe server actions
+- **@supabase/ssr** + **@supabase/supabase-js** for authentication
 - **@t3-oss/env-nextjs** for environment variable validation
-- **Motion** for animations, **jose** for verifying the session JWT
+- **Motion** for animations
 - **pnpm** as the package manager
 
 ## Project structure
@@ -20,8 +21,8 @@ frontend/
 ├── app/
 │   ├── (root)/            # Public shell: home page + header layout
 │   ├── auth/              # login, signup, forgot-password, reset-password, verify-email
+│   │   └── confirm/       # Route handler for email links and the OAuth callback
 │   ├── profile/           # Protected profile page
-│   ├── api/logout/        # Route handler that clears the session cookie
 │   ├── layout.tsx         # Root layout (fonts, Toaster)
 │   └── globals.css        # Tailwind + theme tokens
 ├── components/
@@ -29,12 +30,15 @@ frontend/
 │   ├── ui/                # shadcn/ui primitives
 │   └── ...                # Header, avatar menu, sidebar, background
 ├── server/
-│   ├── auth/              # Session helper, server actions, schemas, logout service
+│   ├── auth/              # Session helper, server actions, schemas
 │   └── users/             # Profile + password server actions and schemas
 ├── lib/
 │   ├── env.js             # Validated env vars
+│   ├── auth-providers.ts  # Which login methods are enabled
+│   ├── supabase/server.ts # Supabase server client (cookies)
 │   ├── safe-action.ts     # Public / protected action clients
 │   └── utils.ts           # cn() helper
+├── proxy.ts               # Refreshes the Supabase session on every request
 └── package.json
 ```
 
@@ -42,6 +46,7 @@ frontend/
 
 - Node.js 20+
 - [pnpm](https://pnpm.io/)
+- A **Supabase project** (see below)
 - The backend running (see `../backend/README.md`)
 
 ## Setup
@@ -50,7 +55,7 @@ frontend/
 pnpm install
 ```
 
-Copy the example environment file:
+Copy the example environment file and fill in your Supabase project URL and anon key:
 
 ```bash
 cp .env.example .env
@@ -62,24 +67,37 @@ Then start the dev server:
 pnpm dev
 ```
 
-Open http://localhost:3000. The backend must be running for signup and login to work.
+Open http://localhost:3000. Both Supabase and the backend must be reachable for auth and profile data to work.
 
 ## Environment variables
 
-| Variable      | Required | Description                                                  |
-| ------------- | -------- | ------------------------------------------------------------ |
-| `BACKEND_URL` | Yes      | Base URL of the FastAPI backend.                             |
-| `NODE_ENV`    | No       | Set automatically by Next.js.                                |
+| Variable                        | Required | Description                                                          |
+| ------------------------------- | -------- | -------------------------------------------------------------------- |
+| `BACKEND_URL`                   | Yes      | Base URL of the FastAPI backend.                                     |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Yes      | Supabase project URL (Project Settings > API).                       |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes      | Supabase anon (publishable) key.                                     |
+| `NEXT_PUBLIC_AUTH_PROVIDERS`    | No       | Enabled login methods, comma-separated: `email,google`. Default `email`. |
+| `NODE_ENV`                      | No       | Set automatically by Next.js.                                        |
 
 Variables are validated with `@t3-oss/env-nextjs` in `lib/env.js`. Set `SKIP_ENV_VALIDATION=1` to bypass validation (useful for Docker builds).
 
+## Supabase setup
+
+1. Create a project at [supabase.com](https://supabase.com).
+2. **Authentication > Providers**: enable **Email** (and **Google** if you want social login). Google needs a Client ID/Secret from Google Cloud, pasted into Supabase.
+3. **Authentication > URL Configuration**: set the **Site URL** and add redirect URLs for your environments, e.g. `http://localhost:3000/auth/confirm` (and the production equivalent). The `emailRedirectTo` / `redirectTo` values used by the actions must be allow-listed here.
+4. Copy the project URL and anon key into `frontend/.env`.
+
+### Toggling login methods
+
+Supabase is the source of truth: a provider only works if it is enabled in the dashboard. On top of that, `NEXT_PUBLIC_AUTH_PROVIDERS` controls which options the UI renders. The template ships with **`email` only**; add `google` to enable the social button.
+
 ## How it works
 
-- **Session** — a single `access_token` cookie holds an RS256 JWT. `server/auth/auth.lib.ts` reads it, **verifies** the signature and expiry with `jose` (public keys fetched from the backend's `/.well-known/jwks.json`) and then fetches `/users/me` for the profile, returning `{ session, user }` or `null`. Layouts and pages call `getSession()` (memoised with React `cache()`). The frontend never holds the signing key.
-- **No refresh tokens** — the token is a long-lived JWT (24h). When it expires the user logs in again. `getSession()` returns `null` for an expired or tampered token.
-- **Server actions** — `server/auth/auth.actions.ts` and `server/users/users.actions.ts` call the backend with `fetch` and write the JWT into the cookie. Client components invoke them through `next-safe-action`.
-- **Auth flows** — `/auth/login`, `/auth/signup`, `/auth/forgot-password`, `/auth/reset-password` and `/auth/verify-email` cover the FastAPI Users flows. After signing up, the account is unverified: an email-verification link is sent and the user logs in afterwards.
-- **Protected actions** — `protectedProcedure` in `lib/safe-action.ts` requires a valid session and forwards the token in the `Authorization` header.
+- **Session** — `@supabase/ssr` stores the Supabase session in cookies. `proxy.ts` refreshes it on every request, so Server Components always see a valid token. `server/auth/auth.lib.ts` (`getSession()`, memoised with React `cache()`) validates the user with Supabase and fetches the profile from the backend, returning `{ session, user }` or `null`.
+- **Server actions** — `server/auth/auth.actions.ts` and `server/users/users.actions.ts` call Supabase (`signUp`, `signInWithPassword`, `signOut`, `signInWithOAuth`, `resetPasswordForEmail`, `updateUser`, `resend`) and the backend. Client components invoke them through `next-safe-action`.
+- **Auth flows** — `/auth/login`, `/auth/signup`, `/auth/forgot-password`, `/auth/reset-password` and `/auth/verify-email`. Supabase sends the emails; `app/auth/confirm/route.ts` handles the links (email confirmation, password recovery) and the OAuth callback, exchanges the credential for a session and redirects.
+- **Protected actions** — `protectedProcedure` in `lib/safe-action.ts` requires a valid session and exposes the token and user to the action. The token is forwarded to the backend in the `Authorization` header.
 - **Guards** — `app/auth/layout.tsx` redirects authenticated users away from the auth pages, while `app/profile/page.tsx` redirects unauthenticated users to `/auth/login`. The root layout shows a resend-verification banner while the email is unverified.
 
 ## Scripts

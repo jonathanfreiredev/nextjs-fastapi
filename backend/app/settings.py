@@ -8,18 +8,25 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 class Settings(BaseSettings):
     env: str = "development"
     database_url: str
-    # Symmetric secret FastAPI Users uses to sign the email-verification and
-    # password-reset tokens.
-    auth_secret: str
-    # Base URL of the frontend, used to build the links sent by email.
+    # Base URL of the frontend, used to build the links sent to the user.
     frontend_url: str = "http://localhost:3000"
-    # PEM contents of the RSA private key used to sign JWTs. When unset, the key
-    # is read from keys/private.pem (see app/auth/keys.py).
-    jwt_private_key: str | None = None
+    # Base URL of the Supabase project that issues the access tokens. The issuer
+    # and the JWKS endpoint are derived from it (see the properties below).
+    supabase_url: str
+    # Audience claim Supabase access tokens carry.
+    supabase_jwt_audience: str = "authenticated"
 
     @property
     def debug(self) -> bool:
         return self.env == "development"
+
+    @property
+    def supabase_issuer(self) -> str:
+        return f"{self.supabase_url.rstrip('/')}/auth/v1"
+
+    @property
+    def supabase_jwks_url(self) -> str:
+        return f"{self.supabase_issuer}/.well-known/jwks.json"
 
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",

@@ -33,11 +33,13 @@ services:
       context: ./backend
       target: dev
     command: ["alembic", "upgrade", "head"]
+    # Values come from backend/.env; only what differs inside Docker is
+    # overridden below (the database host and credentials).
+    env_file: &backend-env-file
+      - ./backend/.env
     environment: &backend-env
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-nextjs-fastapi}
       ENV: development
-      SUPABASE_URL: ${SUPABASE_URL:-https://your-project-ref.supabase.co}
-      SUPABASE_JWT_AUDIENCE: ${SUPABASE_JWT_AUDIENCE:-authenticated}
       FRONTEND_URL: http://localhost:3000
     depends_on:
       postgres:
@@ -48,6 +50,7 @@ services:
       context: ./backend
       target: dev
     command: ["fastapi", "dev", "--host", "0.0.0.0", "--port", "8000"]
+    env_file: *backend-env-file
     environment:
       <<: *backend-env
     volumes:
@@ -66,11 +69,12 @@ services:
     build:
       context: ./frontend
     command: ["pnpm", "dev"]
+    # Values come from frontend/.env; inside the compose network the backend is
+    # reachable by service name, so its URL is overridden here.
+    env_file:
+      - ./frontend/.env
     environment:
       BACKEND_URL: http://backend:8000
-      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-https://your-project-ref.supabase.co}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-your-anon-key}
-      NEXT_PUBLIC_AUTH_PROVIDERS: ${NEXT_PUBLIC_AUTH_PROVIDERS:-email}
     volumes:
       # Mount the source, but keep the image's node_modules untouched.
       - ./frontend/app:/app/app

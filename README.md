@@ -126,7 +126,7 @@ Open http://localhost:3000 and sign up. Supabase sends a verification email (che
 docker compose up
 ```
 
-A one-shot `migrate` service runs `alembic upgrade head` before the API starts, so the schema is always up to date. Supabase runs in the cloud, so pass your project values through the root environment (e.g. `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`).
+A one-shot `migrate` service runs `alembic upgrade head` before the API starts, so the schema is always up to date. The backend and frontend read their environment from **`backend/.env`** and **`frontend/.env`** respectively (`env_file` in `docker-compose.yml`), so there is no separate root file to maintain — only the Docker-internal hostnames (`postgres`, `backend`) are overridden.
 
 Deployment is not handled here: the frontend goes to Vercel (which builds it natively) and the backend to its own service. The `backend/Dockerfile` also has a production stage if you deploy it as a container.
 

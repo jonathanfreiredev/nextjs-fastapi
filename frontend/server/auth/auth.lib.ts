@@ -17,26 +17,31 @@ export type Session = {
 };
 
 /**
- * Resolve the current session. The Supabase client validates the access token
- * (and refreshes it if needed); the domain profile is fetched from the backend,
- * which provisions it on first use.
+ * Resolve the current session. The access token is verified locally (cached
+ * JWKS) via `getClaims()` instead of calling the Auth server on every request;
+ * the domain profile is fetched from the backend, which provisions it on first
+ * use.
  */
 export const getSession = cache(async (): Promise<Session | null> => {
   const supabase = await createClient();
 
-  const { data: userData, error } = await supabase.auth.getUser();
-  if (error || !userData.user) {
+  // Verifies the JWT signature locally and refreshes the token first when it is
+  // close to expiry, writing the updated cookies back through `setAll`.
+  const { data: claimsData, error } = await supabase.auth.getClaims();
+  const claims = claimsData?.claims;
+
+  if (error || !claims) {
     return null;
   }
 
-  const user = userData.user;
+  // The raw token is not part of the claims; it is needed for the backend call.
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData.session?.access_token ?? "";
   const expiresAt = sessionData.session?.expires_at
     ? new Date(sessionData.session.expires_at * 1000).toISOString()
     : null;
 
-  let name = (user.user_metadata?.full_name as string | undefined) ?? "";
+  let name = (claims.user_metadata?.full_name as string | undefined) ?? "";
   if (token) {
     const response = await fetch(`${env.BACKEND_URL}/users/me`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -51,10 +56,12 @@ export const getSession = cache(async (): Promise<Session | null> => {
   return {
     session: { token, expiresAt },
     user: {
-      id: user.id,
-      email: user.email ?? "",
+      id: claims.sub,
+      email: claims.email ?? "",
       name,
-      isVerified: Boolean(user.email_confirmed_at || user.confirmed_at),
+      // Email confirmation is not a top-level JWT claim; Supabase mirrors it
+      // into user_metadata.email_verified. A missing flag means verified.
+      isVerified: claims.user_metadata?.email_verified !== false,
     },
   };
 });

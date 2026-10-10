@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     database_url: str
     # Base URL of the frontend, used to build the links sent to the user.
     frontend_url: str = "http://localhost:3000"
+    # Minimum level for the application logs (DEBUG, INFO, WARNING, ...).
+    log_level: str = "INFO"
     # Base URL of the Supabase project that issues the access tokens. The issuer
     # and the JWKS endpoint are derived from it (see the properties below).
     supabase_url: str

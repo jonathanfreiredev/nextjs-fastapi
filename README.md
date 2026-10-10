@@ -43,8 +43,10 @@ The browser authenticates against Supabase through Next.js server actions; the s
 │   │   ├── auth/            # JWT verification + bearer dependency
 │   │   ├── users/           # Profile model, schemas, JIT provisioning, /users router
 │   │   ├── health/          # Liveness + readiness probes
+│   │   ├── middleware/      # Request id + structured access log
 │   │   ├── db/              # Async engine, session, base model
 │   │   ├── settings.py      # Pydantic settings (reads .env)
+│   │   ├── logging_config.py # structlog setup (text in dev, JSON in prod)
 │   │   └── main.py          # App entrypoint + CORS
 │   ├── alembic/             # Database migrations
 │   ├── tests/               # Unit + integration tests
@@ -150,6 +152,7 @@ On **Render** or **Railway**, set the health check path to `/health`. Locally, `
 | `SUPABASE_URL`          | Yes      | Supabase project URL. Used to derive the issuer and the JWKS endpoint.       |
 | `SUPABASE_JWT_AUDIENCE` | No       | Audience claim on access tokens (default `authenticated`).                   |
 | `ENV`                   | No       | `development` (default) or `production`. Enables SQL echo when in development. |
+| `LOG_LEVEL`             | No       | Minimum level for the application logs (default `INFO`).                     |
 | `FRONTEND_URL`          | No       | Base URL of the frontend, used for redirects.                                |
 
 ### `frontend/.env`

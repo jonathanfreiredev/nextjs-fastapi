@@ -1,13 +1,13 @@
-import logging
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.health.router import health_router
+from app.logging_config import configure_logging
+from app.middleware.request_id import RequestIdMiddleware
 from app.users.router import users_router
 
-# Show application logs in the console.
-logging.basicConfig(level=logging.INFO)
+# Structured logging for the whole process (app + uvicorn).
+configure_logging()
 
 app = FastAPI()
 
@@ -25,3 +25,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+# Added last so it is the outermost middleware: the request id is bound (and the
+# access log emitted) around everything, including CORS.
+app.add_middleware(RequestIdMiddleware)

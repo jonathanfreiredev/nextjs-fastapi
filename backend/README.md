@@ -30,10 +30,13 @@ backend/
 │   │   └── router.py          # /users endpoints (me)
 │   ├── health/
 │   │   └── router.py          # /health liveness + /health/ready readiness
+│   ├── middleware/
+│   │   └── request_id.py      # Request id + structured access log
 │   ├── db/
 │   │   ├── session.py         # Async engine + session factory
 │   │   └── models.py          # Declarative Base and BaseModel (id, timestamps)
 │   ├── settings.py            # Settings loaded from .env
+│   ├── logging_config.py      # structlog setup (dev text / prod JSON)
 │   └── main.py                # FastAPI app, routers, CORS
 ├── alembic/                   # Migrations (async env.py)
 ├── alembic.ini
@@ -80,6 +83,9 @@ DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/app
 # Supabase project URL (the issuer and JWKS are derived from it)
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_JWT_AUDIENCE=authenticated
+
+# Minimum log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+LOG_LEVEL=INFO
 ```
 
 | Variable                | Required | Default                 | Description                                                          |
@@ -88,6 +94,7 @@ SUPABASE_JWT_AUDIENCE=authenticated
 | `SUPABASE_URL`          | Yes      | –                       | Supabase project URL. The issuer (`<url>/auth/v1`) and JWKS (`<url>/auth/v1/.well-known/jwks.json`) are derived from it. |
 | `SUPABASE_JWT_AUDIENCE` | No       | `authenticated`         | Audience claim the access tokens carry.                              |
 | `ENV`                   | No       | `development`           | `development` enables SQL echo.                                      |
+| `LOG_LEVEL`             | No       | `INFO`                  | Minimum level for the application logs.                              |
 | `FRONTEND_URL`          | No       | `http://localhost:3000` | Base URL of the frontend, used for redirects and documentation.      |
 
 Settings are defined in `app/settings.py` and loaded from `backend/.env`.
@@ -103,6 +110,16 @@ uv run fastapi run
 ```
 
 The OpenAPI docs are at `/docs`, and the raw schema at `/openapi.json`.
+
+## Logging
+
+Logging is [structlog](https://www.structlog.org/) on top of the standard library, configured in `app/logging_config.py`:
+
+- **Development** (`ENV=development`) renders human-readable lines; **production** renders one JSON object per line, ready for any log aggregator.
+- Uvicorn's own logs go through the same pipeline, so the process emits a single format.
+- Every request gets a **`request_id`** — reused from an inbound `X-Request-ID` header or generated — attached to all its log lines and echoed back in the `X-Request-ID` response header. Authenticated requests also carry `user_id`.
+
+Verbosity is controlled with `LOG_LEVEL` (default `INFO`).
 
 ## Health checks
 

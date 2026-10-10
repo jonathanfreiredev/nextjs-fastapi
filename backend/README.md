@@ -28,6 +28,8 @@ backend/
 │   │   ├── service.py         # Just-in-time profile provisioning
 │   │   ├── dependencies.py    # TokenClaims -> local User
 │   │   └── router.py          # /users endpoints (me)
+│   ├── health/
+│   │   └── router.py          # /health liveness + /health/ready readiness
 │   ├── db/
 │   │   ├── session.py         # Async engine + session factory
 │   │   └── models.py          # Declarative Base and BaseModel (id, timestamps)
@@ -102,6 +104,15 @@ uv run fastapi run
 
 The OpenAPI docs are at `/docs`, and the raw schema at `/openapi.json`.
 
+## Health checks
+
+Two unauthenticated probes, for orchestrators, load balancers and uptime monitors:
+
+- `GET /health` — **liveness**: the process is running. It checks nothing external on purpose, so a failure means "restart the container".
+- `GET /health/ready` — **readiness**: runs `SELECT 1` against the database and returns `503` when it is unreachable, so traffic is routed away without restarting the process.
+
+On **Render** or **Railway**, set the health check path to `/health`. An external monitor can point at the same path for alerts. In local development, `docker-compose.yml` probes `/health` and the frontend waits for the backend to be healthy.
+
 ## Linting and formatting
 
 The project uses [ruff](https://docs.astral.sh/ruff/) for both linting and formatting, configured in `pyproject.toml`.
@@ -171,6 +182,8 @@ Protected endpoints require an `Authorization: Bearer <supabase_access_token>` h
 
 | Method | Path         | Auth | Description                                          |
 | ------ | ------------ | :--: | ---------------------------------------------------- |
+| GET    | `/health`       |      | Liveness: the process is up (no external checks)   |
+| GET    | `/health/ready` |      | Readiness: the database is reachable (`503` if not) |
 | GET    | `/users/me`  |  ✓   | Return the current profile (provisions it on first use) |
 | PATCH  | `/users/me`  |  ✓   | Update the profile name                              |
 

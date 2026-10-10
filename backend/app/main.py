@@ -3,6 +3,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.health.router import health_router
 from app.users.router import users_router
 
 # Show application logs in the console.
@@ -10,6 +11,8 @@ logging.basicConfig(level=logging.INFO)
 
 app = FastAPI()
 
+# Unauthenticated probes for orchestrators and uptime monitors.
+app.include_router(health_router)
 app.include_router(users_router)
 
 app.add_middleware(

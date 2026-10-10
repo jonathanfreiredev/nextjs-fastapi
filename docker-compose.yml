@@ -64,6 +64,19 @@ services:
         condition: service_completed_successfully
     ports:
       - "8000:8000"
+    healthcheck:
+      # The slim image has no curl, so probe with the bundled Python.
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status == 200 else 1)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   frontend:
     build:
@@ -90,7 +103,8 @@ services:
       - ./frontend/eslint.config.mjs:/app/eslint.config.mjs
       - ./frontend/prettier.config.js:/app/prettier.config.js
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "3000:3000"
 

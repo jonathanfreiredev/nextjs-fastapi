@@ -42,6 +42,7 @@ The browser authenticates against Supabase through Next.js server actions; the s
 │   ├── app/
 │   │   ├── auth/            # JWT verification + bearer dependency
 │   │   ├── users/           # Profile model, schemas, JIT provisioning, /users router
+│   │   ├── health/          # Liveness + readiness probes
 │   │   ├── db/              # Async engine, session, base model
 │   │   ├── settings.py      # Pydantic settings (reads .env)
 │   │   └── main.py          # App entrypoint + CORS
@@ -130,6 +131,15 @@ A one-shot `migrate` service runs `alembic upgrade head` before the API starts, 
 
 Deployment is not handled here: the frontend goes to Vercel (which builds it natively) and the backend to its own service. The `backend/Dockerfile` also has a production stage if you deploy it as a container.
 
+## Health checks
+
+The backend exposes two unauthenticated probes for orchestrators, load balancers and uptime monitors:
+
+- `GET /health` — **liveness**: the process is running. It checks nothing external, so a failure means "restart the container".
+- `GET /health/ready` — **readiness**: pings the database with `SELECT 1` and returns `503` when it is unreachable, so traffic is routed away without restarting the process.
+
+On **Render** or **Railway**, set the health check path to `/health`. Locally, `docker-compose.yml` probes `/health` and the frontend waits for the backend to be healthy.
+
 ## Environment variables
 
 ### `backend/.env`
@@ -160,6 +170,8 @@ All endpoints live on the FastAPI backend. Protected routes expect an `Authoriza
 
 | Method | Path        | Auth | Description                                               |
 | ------ | ----------- | :--: | --------------------------------------------------------- |
+| GET    | `/health`       |      | Liveness: the process is up (no external checks)      |
+| GET    | `/health/ready` |      | Readiness: the database is reachable (`503` if not)   |
 | GET    | `/users/me` |  ✓   | Return the current profile (provisions it on first use)   |
 | PATCH  | `/users/me` |  ✓   | Update the profile name                                   |
 

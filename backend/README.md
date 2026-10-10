@@ -37,6 +37,7 @@ backend/
 │   │   └── models.py          # Declarative Base and BaseModel (id, timestamps)
 │   ├── settings.py            # Settings loaded from .env
 │   ├── logging_config.py      # structlog setup (dev text / prod JSON)
+│   ├── pagination.py          # Offset pagination + sorting for list endpoints
 │   └── main.py                # FastAPI app, routers, CORS
 ├── alembic/                   # Migrations (async env.py)
 ├── alembic.ini
@@ -211,6 +212,56 @@ Protected endpoints require an `Authorization: Bearer <supabase_access_token>` h
 ```json
 { "full_name": "Jane Smith" }
 ```
+
+### Pagination and sorting
+
+List endpoints paginate with **offset** and sort through a **per-endpoint
+allowlist**. The reusable pieces live in `app/pagination.py`.
+
+| Parameter | Default          | Bounds | Meaning                                              |
+| --------- | ---------------- | ------ | ---------------------------------------------------- |
+| `limit`   | `20`             | 1–100  | Page size                                            |
+| `offset`  | `0`              | ≥ 0    | Rows to skip                                         |
+| `sort`    | endpoint default | –      | Comma-separated fields; a leading `-` means descending |
+
+Responses use the `OffsetPage` envelope:
+
+```json
+{ "items": [ ... ], "total": 137, "limit": 20, "offset": 40 }
+```
+
+`total` counts every row matching the filters (ignoring pagination) so a client
+can render "page X of Y"; it costs an extra `COUNT` query. Example:
+`GET /users?limit=20&offset=40&sort=-created_at`.
+
+Implementation notes:
+
+- Resolve `sort` against a per-endpoint allowlist and pass the result to
+  `select(...).order_by(...)`. Never build `ORDER BY` from raw client input.
+- `SortParams.order_by(...)` always appends a unique tiebreaker (`id`), so the
+  order is total and rows cannot repeat or vanish between pages.
+- Filter rows the endpoint owns with typed query parameters, and keep
+  soft-deleted rows out with `deleted_at IS NULL`.
+- Text search: `ILIKE '%term%'` is fine for small tables; move to a `pg_trgm`
+  or full-text index when it matters.
+
+#### Keyset (cursor) pagination
+
+Offset is the default, but it has two weaknesses: it is unstable under
+concurrent writes (rows can repeat or be skipped) and `OFFSET` degrades with
+depth. For **large or high-churn collections** — infinite scroll, activity
+feeds, a native app — use keyset instead:
+
+- Sort by a **unique, ordered** key: `created_at` plus the `id` tiebreaker, or a
+  time-ordered UUID (v7) as the key on its own.
+- Accept an opaque `cursor` (base64 of the last row's sort values) instead of
+  `offset`, and return `{ "items": [ ... ], "next_cursor": "..." | null }`.
+- Compare with a row expression: `WHERE (created_at, id) < (:last_created_at, :last_id)`.
+- Fetch `limit + 1` rows to know whether a next page exists.
+- The cursor is tied to the sort: reject it if the `sort` changed.
+
+Keyset cannot return `total` or jump to page N; that is the price of being
+stable and fast at any depth. Pick **one mode per endpoint**, never both.
 
 ## Authentication notes
 

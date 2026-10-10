@@ -70,14 +70,24 @@ export function SignupForm({
       return;
     }
 
+    form.reset();
+
+    // Email confirmation required: go to a persistent page so the user knows
+    // to check their inbox (a toast can be dismissed too easily).
+    if (res.data?.requiresVerification) {
+      router.replace(
+        `/auth/verify-email?email=${encodeURIComponent(data.email)}`,
+      );
+      return;
+    }
+
+    // Confirmation disabled: Supabase already signed the user in.
     toast.add({
       title: "Account created successfully!",
-      description: "Check your email to verify your account.",
+      description: "Welcome! You are signed in.",
       type: "success",
     });
-
-    form.reset();
-    router.replace("/auth/login");
+    router.replace("/");
   }
 
   return (

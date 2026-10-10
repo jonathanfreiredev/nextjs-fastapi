@@ -12,11 +12,23 @@ const simulateDelay = async () => {
 };
 
 /**
+ * Machine-readable reasons a server error can carry, so clients can branch on
+ * the cause without matching on the human-readable message.
+ */
+export type ActionErrorReason = "email_not_confirmed" | "rate_limited";
+
+/**
  * Base client with global middleware for logging and delay
  */
 export const actionClient = createSafeActionClient({
   // Global error handler
-  handleServerError: (error) => ({
+  handleServerError: (
+    error,
+  ): {
+    code: number;
+    message: string;
+    reason?: ActionErrorReason;
+  } => ({
     code: 500,
     message: error.message || "An unexpected server error occurred.",
   }),

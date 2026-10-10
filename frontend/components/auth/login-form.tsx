@@ -48,6 +48,23 @@ export const LoginForm = ({
     const res = await loginAction(data);
 
     if (res.serverError) {
+      if (res.serverError.reason === "email_not_confirmed") {
+        toast.add({
+          title: "Email not confirmed",
+          description: res.serverError.message,
+          type: "warning",
+          timeout: 0,
+          actionProps: {
+            children: "Verify email",
+            onClick: () =>
+              router.push(
+                `/auth/verify-email?email=${encodeURIComponent(data.email)}`,
+              ),
+          },
+        });
+        return;
+      }
+
       toast.add({
         title: "Login failed!",
         description:

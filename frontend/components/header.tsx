@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { SignInOrSignUpButton } from "./auth/sign-in-or-sign-up-button";
+import { HeaderAuthButtons } from "./auth/header-auth-buttons";
 import { SidebarSheet } from "./sidebar-sheet";
 import { DropdownAvatarMenu } from "./dropdown-avatar-menu";
 import { Session } from "@/server/auth/auth.lib";
@@ -23,7 +23,7 @@ export async function Header({ session }: HeaderProps) {
             {!!session ? (
               <DropdownAvatarMenu user={{ name: session.user.name }} />
             ) : (
-              <SignInOrSignUpButton />
+              <HeaderAuthButtons />
             )}
           </div>
 

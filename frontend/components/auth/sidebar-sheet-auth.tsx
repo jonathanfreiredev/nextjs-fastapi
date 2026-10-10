@@ -1,5 +1,5 @@
 "use client";
-import { LogInIcon, LogOutIcon } from "lucide-react";
+import { LogInIcon, LogOutIcon, UserPlusIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Item, ItemContent, ItemMedia, ItemTitle } from "../ui/item";
@@ -18,25 +18,46 @@ export function SidebarSheetAuth({ isLoggedIn }: SidebarSheetAuthProps) {
   return (
     <>
       {!isLoggedIn ? (
-        <SheetClose
-          render={
-            <Item
-              variant="default"
-              size="sm"
-              className="cursor-pointer"
-              render={
-                <Link href="/auth/login">
-                  <ItemMedia>
-                    <LogInIcon className="size-5" />
-                  </ItemMedia>
-                  <ItemContent>
-                    <ItemTitle>Log in</ItemTitle>
-                  </ItemContent>
-                </Link>
-              }
-            />
-          }
-        />
+        <>
+          <SheetClose
+            render={
+              <Item
+                variant="default"
+                size="sm"
+                className="cursor-pointer"
+                render={
+                  <Link href="/auth/login">
+                    <ItemMedia>
+                      <LogInIcon className="size-5" />
+                    </ItemMedia>
+                    <ItemContent>
+                      <ItemTitle>Log in</ItemTitle>
+                    </ItemContent>
+                  </Link>
+                }
+              />
+            }
+          />
+          <SheetClose
+            render={
+              <Item
+                variant="muted"
+                size="sm"
+                className="cursor-pointer"
+                render={
+                  <Link href="/auth/signup">
+                    <ItemMedia>
+                      <UserPlusIcon className="size-5" />
+                    </ItemMedia>
+                    <ItemContent>
+                      <ItemTitle>Sign up</ItemTitle>
+                    </ItemContent>
+                  </Link>
+                }
+              />
+            }
+          />
+        </>
       ) : (
         <SheetClose
           render={
